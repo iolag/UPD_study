@@ -1,0 +1,23 @@
+Datasets/
+other stuff/
+__pycache__/
+brain_train/
+wandb/
+natural-synthetic-anomalies-main/
+studies/
+saved_runs/
+f-AnoGAN/*.pth
+f-AnoGAN/generated
+**/*.pth
+**/*.pt
+Dataloaders/old/
+**/*.jpg
+model_ckps/
+felix/
+paper/
+old/
+saved_models/
+random/
+pretrained_models/
+CCD/
+saved_statistics/
