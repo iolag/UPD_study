@@ -122,7 +122,7 @@ def vae_val_step(model, input, return_loss: bool = True) -> Tuple[dict, Tensor]:
         anomaly_map = (input - input_recon).abs().mean(1, keepdim=True)
     # for MRI, apply brainmask
     if config.modality == 'MRI':
-        mask = torch.cat([inp > inp.min() for inp in input]).unsqueeze(1)
+        mask = torch.stack([inp > inp.min() for inp in input])
         anomaly_map *= mask
         input_recon *= mask
 

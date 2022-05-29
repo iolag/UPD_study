@@ -56,7 +56,6 @@ class NormalDataset(Dataset):
 
         img = Image.open(self.files[idx])
         img = self.initial_transform(img)
-
         if self.stadardize:
             img = self.norm(img)
 

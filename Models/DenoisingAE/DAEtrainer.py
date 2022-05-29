@@ -103,8 +103,8 @@ def add_noise(input):
     ns = F.interpolate(ns, size=config.image_size, mode='bilinear', align_corners=True)
 
     # Roll to randomly translate the generated noise.
-    roll_x = random.choice(range(128))
-    roll_y = random.choice(range(128))
+    roll_x = random.choice(range(config.image_size))
+    roll_y = random.choice(range(config.image_size))
     ns = torch.roll(ns, shifts=[roll_x, roll_y], dims=[-2, -1])
 
     # Use foreground mask for MRI, to only apply noise in the foreground.
@@ -146,7 +146,7 @@ def anom_val_step(model, input) -> Tuple[Tensor, Tensor, Tensor]:
             anomaly_map *= mask
             input_recon *= mask
 
-        anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
+        anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
 
     return anomaly_map, anomaly_score, input_recon
 

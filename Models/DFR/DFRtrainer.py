@@ -32,16 +32,13 @@ def get_config():
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='Weight decay')
     parser.add_argument('--max_steps', type=int, default=10000, help='Number of training steps')
-    parser.add_argument('--batch_size' '-bs', type=int, default=4, help='Batch size')
+    parser.add_argument('--batch_size', '-bs', type=int, default=4, help='Batch size')
 
     # Model settings
-    parser.add_argument('--arch', type=str, default='wide_resnet50_2',
-                        choices=['vgg19', 'wide_resnet50_2'])
+    parser.add_argument('--arch', type=str, default='vgg19', choices=['vgg19', 'wide_resnet50_2'])
     parser.add_argument('--latent_channels', type=int, default=None, help='Number of CAE latent channels.')
-    parser.add_argument('--end_layer', type=int, default=5,
-                        help='Final backbone layer to use for embedding volume creation.')
-    parser.add_argument('--start_layer', type=int, default=0,
-                        help='First backbone layer to use for embedding volume creation.')
+    parser.add_argument('--start_layer', type=int, default=0, help='First backbone layer to use.')
+    parser.add_argument('--last_layer', type=int, default=14, help='Last backbone layer to use.')
     parser.add_argument('--upsample_mode', type=str, default='bilinear',
                         help='Alingment step interpolation mode.')
     # stride 2 output embedding volume: c x 64 x 64 for input 128
@@ -55,8 +52,8 @@ def get_config():
 config = get_config()
 
 
-msg = "num_images_log should be lower or equal to batch size"
-assert (config.batch_size >= config.num_images_log), msg
+# msg = "num_images_log should be lower or equal to batch size"
+# assert (config.batch_size >= config.num_images_log), msg
 
 # Select training device
 config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -91,7 +88,7 @@ if config.latent_channels is None:
     print('Estimating number of required latent channels')
 
     extractor = Extractor(start_layer=config.start_layer,
-                          end_layer=config.end_layer,
+                          last_layer=config.last_layer,
                           upsample_mode=config.upsample_mode,
                           featmap_size=config.image_size,
                           stride=config.stride).to(config.device)
@@ -111,7 +108,7 @@ model = FeatureAE(
     img_size=config.image_size,
     latent_channels=config.latent_channels,
     start_layer=config.start_layer,
-    end_layer=config.end_layer,
+    last_layer=config.last_layer,
     upsample_mode=config.upsample_mode,
     stride=config.stride
 ).to(config.device)
@@ -131,7 +128,7 @@ if config.load_pretrained:
 optimizer = torch.optim.Adam(model.parameters(),
                              lr=config.lr, weight_decay=config.weight_decay)
 # print
-model.extractor.feat_extractor.print_dims(torch.ones((4, 3, 128, 128)).cuda())
+# model.extractor.feat_extractor.print_dims(torch.ones((4, 3, 128, 128)).cuda())
 
 # Load saved model toevaluate
 if config.eval:
@@ -153,30 +150,32 @@ def train_step(model, optimizer, input) -> Tuple[float, Tensor]:
 
 def val_step(model, input, return_loss: bool = True) -> Tuple[float, Tensor, Tensor]:
     """Calculates val loss, anomaly maps of shape batch_shape and anomaly scores of shape [b,1]"""
-
     model.eval()
 
     with torch.no_grad():
 
         feats, rec = model(input)
         map_small = torch.mean((feats - rec) ** 2, dim=1, keepdim=True)
-        anomaly_map = F.interpolate(map_small, input.shape[-2:], mode='bilinear', align_corners=True)
-
         loss = map_small.mean()
+
+        anomaly_map = F.interpolate(map_small, input.shape[-2:], mode='bilinear', align_corners=True)
 
         if config.ssim_eval:
             anom_map_small = ssim_map(feats, rec)
             anomaly_map = F.interpolate(anom_map_small, input.shape[-2:], mode='bilinear', align_corners=True)
+        else:
+            anomaly_map = F.interpolate(map_small, input.shape[-2:], mode='bilinear', align_corners=True)
 
     if config.modality in ['MRI', 'MRInoram']:
-        mask = torch.cat([inp > inp.min() for inp in input]).unsqueeze(1)
+        mask = torch.stack([inp > inp.min() for inp in input])
         anomaly_map *= mask
 
-    anomaly_score = torch.tensor([anom.mean() for anom in anomaly_map])
+    anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
+
     if return_loss:
         return loss.item(), anomaly_map, anomaly_score
     else:
-        anomaly_map, anomaly_score
+        return anomaly_map, anomaly_score
 
 
 def validate(model, val_loader, i_iter, config, logger):
@@ -256,7 +255,7 @@ def train(model, optimizer, train_loader, val_loader, small_testloader, config) 
             if i_iter % config.val_frequency == 0:
                 validate(model, val_loader, i_iter, config, logger)
 
-            if i_iter % config.anom_val_frequency == 0:
+            if i_iter % config.anom_val_frequency == 0 or i_iter == 10 or i_iter == 50 or i_iter == 100:
                 eval_dfr_pii(model, small_testloader, i_iter, val_step, logger, config)
 
             if i_iter % config.save_frequency == 0 and i_iter != 0:

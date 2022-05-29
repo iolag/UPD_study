@@ -254,7 +254,7 @@ def evaluation(inputs, segmentations, labels, anomaly_maps, logger):
     s, h, w = anomaly_maps.shape
     anomaly_maps = anomaly_maps.reshape(s, 1, 1, h, w)
     anomaly_maps = [map for map in anomaly_maps]
-    inputs = torch.cat(inputs)  # tensor of shape samples, 1,h,w
+    inputs = torch.cat(inputs)  # tensor of shape num_samples,1,h,w
     inputs = inputs.reshape(s, 1, 1, h, w)
     inputs = [inp for inp in inputs]
 
@@ -263,7 +263,7 @@ def evaluation(inputs, segmentations, labels, anomaly_maps, logger):
         masks = [inp > inp.min() for inp in inputs]
         anomaly_maps = [map * mask for map, mask in zip(anomaly_maps, masks)]
 
-    anomaly_scores = [torch.Tensor([map.mean() for map in anomaly_maps])]
+    anomaly_scores = [torch.Tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_maps, inputs)])]
     threshold = metrics(anomaly_maps, segmentations, anomaly_scores,
                         labels, logger, 0, limited_metrics=False)
 

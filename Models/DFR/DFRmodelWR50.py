@@ -15,7 +15,7 @@ class WR50FeatureExtractor(nn.Module):
     def __init__(
         self,
         start_layer: int = 1,  # layers from 1 to 4
-        end_layer: int = 4
+        last_layer: int = 4
     ):
         """
         Returns features on multiple levels from a WideResnet50_2.
@@ -33,7 +33,7 @@ class WR50FeatureExtractor(nn.Module):
         def hook(module, input, output):
             self.outputs.append(output)
 
-        for i in range(start_layer, end_layer):
+        for i in range(start_layer, last_layer):
             if i == 0:
                 self.backbone.relu.register_forward_hook(hook)
             if i == 1:
@@ -122,7 +122,7 @@ class Extractor(nn.Module):
     def __init__(
         self,
         start_layer: int = 0,
-        end_layer: int = 4,  # num of backbone layers to use
+        last_layer: int = 4,  # num of backbone layers to use
         upsample_mode: str = 'bilinear',
         kernel_size: int = 4,
         stride: int = 4,
@@ -132,7 +132,7 @@ class Extractor(nn.Module):
         super().__init__()
 
         # instatiate VGG*FeatureExtractor class
-        self.feat_extractor = WR50FeatureExtractor(start_layer, end_layer)
+        self.feat_extractor = WR50FeatureExtractor(start_layer, last_layer)
 
         self.featmap_size = featmap_size
         self.upsample_mode = upsample_mode
@@ -201,7 +201,7 @@ class FeatureAE(nn.Module):
                  latent_channels: int,
                  use_batchnorm: bool = True,
                  start_layer: int = 1,
-                 end_layer: int = 4,
+                 last_layer: int = 4,
                  upsample_mode: str = "bilinear",
                  stride: int = 4):
 
@@ -210,7 +210,7 @@ class FeatureAE(nn.Module):
         torch.backends.cudnn.benchmark = False  # solves an error for specific latent channel nums
 
         self.extractor = Extractor(start_layer=start_layer,
-                                   end_layer=end_layer,
+                                   last_layer=last_layer,
                                    upsample_mode=upsample_mode,
                                    featmap_size=img_size,
                                    stride=stride)
@@ -277,7 +277,7 @@ if __name__ == '__main__':
                    latent_channels=150,
                    use_batchnorm=True,
                    start_layer=1,
-                   end_layer=4,
+                   last_layer=4,
                    upsample_mode="bilinear",
                    stride=2
                    ).to(config.device)

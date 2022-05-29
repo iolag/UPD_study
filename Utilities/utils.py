@@ -101,25 +101,27 @@ def metrics(anomaly_maps: list = None,
     For image-level evaluation, both anomaly_scores and labels should be provided.
 
     Args:
-        anomaly_maps (list): list of anomaly map tensors of shape batch_shape
-        segmentations (list): list of segmentation tensors of shape batch_shape
-        anomaly_scores (list): list of anomaly score tensors of shape [batch_size, 1]
-        labels (list): list of label tensors of shape [batch_size, 1]
+        anomaly_maps (list): list of anomaly map tensor batches of shape [b,c,h,w]
+        segmentations (list): list of segmentation tensor batches of shape [b,c,h,w]
+        anomaly_scores (list): list of anomaly score tensors of shape [b, 1]
+        labels (list): list of label tensors of shape [b, 1]
         wandb_logger: wandb logger instance
         step (int, optional): iteration step, for logging during online evaluation
         print_results (bool): whether to print the evaluation results
         limited metrics (bool): limits the eval to specific per-pixel metrics pixel AP, best DICE
     """
 
-    log_msg = "\nEvaluation results: \n"
-
+    # log_msg = "\nEvaluation results: \n"
+    print("\nEvaluation results: \n")
     # image-wise metrics
     if labels is not None:
 
         sample_ap = compute_average_precision(torch.cat(anomaly_scores), torch.cat(labels))
+        print(f"sample-wise average precision: {sample_ap:.4f}")
         sample_auroc = compute_auroc(torch.cat(anomaly_scores), torch.cat(labels))
-        log_msg += f"sample-wise AUROC: {sample_auroc:.4f} - "
-        log_msg += f"sample-wise average precision: {sample_ap:.4f}\n"
+        print(f"sample-wise AUROC: {sample_auroc:.4f}\n")
+        # log_msg += f"sample-wise AUROC: {sample_auroc:.4f} - "
+        # log_msg += f"sample-wise average precision: {sample_ap:.4f}\n"
 
         if wandb_logger is not None:
             wandb_logger.log({
@@ -133,26 +135,30 @@ def metrics(anomaly_maps: list = None,
 
         if limited_metrics:
             pixel_ap = compute_average_precision(torch.cat(anomaly_maps), torch.cat(segmentations))
-            best_dice, threshold = compute_best_dice(
-                torch.cat(anomaly_maps), torch.cat(segmentations))
-            log_msg += f"pixel-wise average precision: {pixel_ap:.4f}\n"
-            log_msg += f"Best Dice score for 100 thresholds: {best_dice:.4f}\n"
+            print(f"pixel-wise average precision: {pixel_ap:.4f}\n")
+            # best_dice, threshold = compute_best_dice(
+            #     torch.cat(anomaly_maps), torch.cat(segmentations))
+            # print(f"Best Dice score for 100 thresholds: {best_dice:.4f}")
+            # log_msg += f"pixel-wise average precision: {pixel_ap:.4f}\n"
+            # log_msg += f"Best Dice score for 100 thresholds: {best_dice:.4f}\n"
             if wandb_logger is not None:
                 wandb_logger.log({
-                    'anom_val/pixel-ap': pixel_ap,
-                    'anom_val/best-dice': best_dice,
+                    'anom_val/pixel-ap': pixel_ap
                 }, step=step)
 
         else:
             pixel_ap = compute_average_precision(torch.cat(anomaly_maps), torch.cat(segmentations))
-            pixel_auroc = compute_auroc(torch.cat(anomaly_maps), torch.cat(segmentations))
+            print(f"pixel-wise average precision: {pixel_ap:.4f}")
+            best_dice, threshold = compute_best_dice(torch.cat(anomaly_maps), torch.cat(segmentations))
+            print(f"Best Dice score for 100 thresholds: {best_dice:.4f}")
             dice_5fpr = compute_dice_at_nfpr(torch.cat(anomaly_maps), torch.cat(segmentations))
-            best_dice, threshold = compute_best_dice(
-                torch.cat(anomaly_maps), torch.cat(segmentations))
-            log_msg += f"pixel-wise AUROC: {pixel_auroc:.4f} - "
-            log_msg += f"pixel-wise average precision: {pixel_ap:.4f}\n"
-            log_msg += f"Dice score at 5% FPR: {dice_5fpr:.4f} - "
-            log_msg += f"Best Dice score for 100 thresholds: {best_dice:.4f}\n"
+            print(f"Dice score at 5% FPR: {dice_5fpr:.4f}")
+            pixel_auroc = compute_auroc(torch.cat(anomaly_maps), torch.cat(segmentations))
+            print(f"pixel-wise AUROC: {pixel_auroc:.4f}\n")
+            # log_msg += f"pixel-wise AUROC: {pixel_auroc:.4f} - "
+            # log_msg += f"pixel-wise average precision: {pixel_ap:.4f}\n"
+            # log_msg += f"Dice score at 5% FPR: {dice_5fpr:.4f} - "
+            # log_msg += f"Best Dice score for 100 thresholds: {best_dice:.4f}\n"
             if wandb_logger is not None:
                 wandb_logger.log({
                     'anom_val/pixel-ap': pixel_ap,
@@ -162,10 +168,10 @@ def metrics(anomaly_maps: list = None,
 
                 }, step=step)
 
-    if print_results:
-        print(log_msg)
+    # if print_results:
+    #     print(log_msg)
 
-    if segmentations is not None:
+    if segmentations is not None and not limited_metrics:
         return threshold
 
 
@@ -387,8 +393,8 @@ def load_data(config):
             from Dataloaders.RF import get_dataloaders
             config.img_channels = 3
 
-    msg = "num_images_log should be lower or equal to batch size"
-    assert (config.batch_size >= config.num_images_log), msg
+    # msg = "num_images_log should be lower or equal to batch size"
+    # assert (config.batch_size >= config.num_images_log), msg
 
     print("Loading data...")
     t_load_data_start = time()
@@ -396,6 +402,14 @@ def load_data(config):
     if config.modality == 'CT':
         train_loader, val_loader, big_testloader, small_testloader = get_dataloaders(config)
     else:
+        # For testloaders make batch_size equal to num_images_log, the number of images to log on wandb.
+        # In evaluate.py there is the need to run through the dataloader once to calc threshold
+        # when running through it again to produce and log images, it is more convenient to do it through
+        # a single testloader iteration, instead oif many testloader iterations until we aggregate the desired
+        # number of images we want to log.
+        temp = config.batch_size
+        config.batch_size = config.num_images_log
+
         if config.anomal_split == 1.0:
             testloader = get_dataloaders(config, train=False)
             small_testloader = testloader
@@ -405,6 +419,7 @@ def load_data(config):
             assert (len(testloader) != 0), msg
 
         else:
+
             big_testloader, small_testloader = get_dataloaders(config, train=False)
 
             print('Big test-set: {} samples, Small test-set: set: {} samples.'.format(
@@ -414,7 +429,11 @@ def load_data(config):
 
             msg = "anomal_split is too high or batch_size too high, Small testloader is empty."
             assert (len(small_testloader) != 0), msg
+
         if not config.eval:
+            # restore desired batch_size
+            config.batch_size = temp
+
             if config.normal_split == 1.0:
                 train_loader = get_dataloaders(config)
                 print('Training set: {} samples'.format(

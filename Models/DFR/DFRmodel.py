@@ -205,7 +205,7 @@ class Extractor(nn.Module):
     def __init__(
         self,
         start_layer: int = 4,
-        end_layer: int = 12,  # num of backbone layers to use
+        last_layer: int = 12,  # num of backbone layers to use
         backbone: str = 'vgg19',
         upsample_mode: str = 'bilinear',
         kernel_size: int = 4,
@@ -216,7 +216,7 @@ class Extractor(nn.Module):
         super().__init__()
 
         # instatiate VGG*FeatureExtractor class
-        cnn_layers = VGG19LAYERS[start_layer:end_layer]
+        cnn_layers = VGG19LAYERS[start_layer:last_layer]
         self.feat_extractor = backbone_nets[backbone](layer_names=cnn_layers)
 
         self.featmap_size = featmap_size
@@ -261,7 +261,7 @@ class Extractor(nn.Module):
         features = []
         for _, feat_map in feat_maps.items():
             # Resizing to img_size
-            print(feat_map.shape)
+
             feat_map = F.interpolate(feat_map, size=self.featmap_size,
                                      mode=self.upsample_mode,
                                      align_corners=self.align_corners)
@@ -287,7 +287,7 @@ class FeatureAE(nn.Module):
                  latent_channels: int,
                  use_batchnorm: bool = True,
                  start_layer: int = 4,
-                 end_layer: int = 12,
+                 last_layer: int = 12,
                  upsample_mode: str = "bilinear",
                  stride=4):
 
@@ -295,7 +295,7 @@ class FeatureAE(nn.Module):
         torch.backends.cudnn.benchmark = False  # solves error for specific latent channel nums
 
         self.extractor = Extractor(start_layer=start_layer,
-                                   end_layer=end_layer,
+                                   last_layer=last_layer,
                                    upsample_mode=upsample_mode,
                                    featmap_size=img_size,
                                    stride=stride)
@@ -364,7 +364,7 @@ if __name__ == '__main__':
         img_size=config.img_size,
         latent_channels=config.latent_channels,
         start_layer=0,
-        end_layer=16,
+        last_layer=16,
         upsample_mode=config.upsample_mode,
         stride=config.stride
     ).to(config.device)

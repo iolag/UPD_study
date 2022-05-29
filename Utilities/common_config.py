@@ -4,16 +4,19 @@ from Utilities.utils import str_to_bool
 
 
 def common_config(parser):
-
+    parser.add_argument('--norm_vol', type=str_to_bool, default=False,
+                        help='Load encoder pretrained with CCD')
     # General script settings
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--load_pretrained', type=str_to_bool, default=False,
                         help='Load encoder pretrained with CCD')
-    parser.add_argument('--disable_wandb', type=str_to_bool, default=False, help='disable wandb logging')
+    parser.add_argument('--disable_wandb', '-dw', type=str_to_bool,
+                        default=False, help='disable wandb logging')
     parser.add_argument('--eval', type=str_to_bool, default=False, help='Evaluation mode')
     parser.add_argument('--print_model', type=str_to_bool, default=False,
                         help='Print model information with torchsummary.summary')
-
+    parser.add_argument('--limited_metrics', '-lm', type=str_to_bool, default=True,
+                        help='onlt return image-level metrics and pixel AP')
     # Data settings
     parser.add_argument('--datasets_dir', type=str,
                         default='/datasets/Datasets/', help='datasets_dir')
@@ -27,7 +30,7 @@ def common_config(parser):
     parser.add_argument('--num_workers', type=int, default=7, help='Number of workers')
 
     # MRI specific settings
-    parser.add_argument('--sequence', type=str, default='t1', help='MRI sequence', choices=['t1', 't2'])
+    parser.add_argument('--sequence', type=str, default='t2', help='MRI sequence', choices=['t1', 't2'])
     parser.add_argument('--slice_range', type=int, nargs='+',
                         default=(0, 155), help='Lower and Upper slice index')
     parser.add_argument('--normalize', type=str_to_bool, default=False,
@@ -52,10 +55,10 @@ def common_config(parser):
     parser.add_argument('--name_add', type=str, default='', help='option to add to the wandb name')
     parser.add_argument('--log_frequency', '-lf', type=int, default=100, help='logging frequency')
     parser.add_argument('--val_frequency', '-vf', type=int, default=400, help='validation frequency')
-    parser.add_argument('--anom_val_frequency', '-avf', type=int, default=200,
+    parser.add_argument('--anom_val_frequency', '-avf', type=int, default=500,
                         help='Validation frequency on anomalous samples')
     parser.add_argument('--val_steps', type=int, default=50, help='validation steps')
-    parser.add_argument('--num_images_log', '-nil', type=int, default=4, help='Number of images to log')
+    parser.add_argument('--num_images_log', '-nil', type=int, default=20, help='Number of images to log')
 
     # SSIM evaluation
     parser.add_argument('--ssim_eval', type=str_to_bool, default=True,

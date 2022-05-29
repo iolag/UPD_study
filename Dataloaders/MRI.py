@@ -130,7 +130,8 @@ def get_dataloaders(config: Namespace,
         config.return_volumes = False
         # get array of slices
         slices = get_camcan_slices(config)
-
+        if config.norm_vol:
+            slices = np.concatenate([(volume - np.mean(volume)) / np.std(volume) for volume in slices])
         # keep slices with brain pixels in them
         slices = slices[np.sum(slices, axis=(1, 2, 3)) > 0]
 
@@ -163,7 +164,8 @@ def get_dataloaders(config: Namespace,
             slices, segmentations = get_atlas_slices(config)
         else:
             slices, segmentations = get_brats_slices(config)
-
+        if config.norm_vol:
+            slices = np.concatenate([(volume - np.mean(volume)) / np.std(volume) for volume in slices])
         split_idx = int(len(slices) * config.anomal_split)
 
         # if small part of anomal set is needed for validation (config.anomal_split != 1.0)
