@@ -1,13 +1,14 @@
 
 import sys
 import os
-sys.path.append('/u/home/lagi/thesis')
+sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
 import numpy as np
 import torch
 from torchvision import transforms as T
 from Utilities.metrics import (
     compute_average_precision,
-    compute_auroc, compute_dice_at_nfpr, compute_best_dice,
+    compute_auroc, compute_dice_at_nfpr,
+    compute_best_dice
 )
 from time import time
 from argparse import Namespace
@@ -19,16 +20,13 @@ import wandb
 os.environ["WANDB_SILENT"] = "true"
 import torchgeometry as tgm
 
-# initialize SSIM Loss module
-ssim_module = tgm.losses.SSIM(11, max_val=255)
+
+def save_model(model, config, i_iter: Union[int, str] = ""):
+    torch.save(model.state_dict(), f'saved_models/{config.modality}/{config.naming_str}{i_iter}.pth')
 
 
-def save_model(model, config):
-    torch.save(model.state_dict(), f'saved_models/{config.modality}/{config.naming_str}.pth')
-
-
-def load_model(model, config):
-    return model.load_state_dict(torch.load(f'saved_models/{config.modality}/{config.naming_str}.pth'))
+def load_model(config):
+    return torch.load(f'saved_models/{config.modality}/{config.naming_str}{config.load_iter}.pth')
 
 
 def set_requires_grad(model, requires_grad: bool) -> None:
@@ -39,8 +37,14 @@ def set_requires_grad(model, requires_grad: bool) -> None:
 def misc_settings(config):
     """
     """
+    msg = "num_images_log should be lower or equal to batch size"
+    assert (config.batch_size >= config.num_images_log), msg
+
+    # Select training device
+    config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     # Multi purpose model name string
-    name = f'{config.method}_{config.modality}'
+    name = f'{config.method}_fin_{config.modality}'
 
     if config.modality == 'MRI':
         name += f'_{config.sequence}'
@@ -66,6 +70,10 @@ def misc_settings(config):
     return name, logger
 
 
+# initialize SSIM Loss module
+ssim_module = tgm.losses.SSIM(11, max_val=255)
+
+
 def ssim_map(batch1: Tensor, batch2: Tensor):
     """
     Computes the anomaly map between two batches using SSIM.
@@ -87,13 +95,10 @@ def ssim_map(batch1: Tensor, batch2: Tensor):
     return anomaly_map
 
 
-def metrics(anomaly_maps: list = None,
-            segmentations: list = None,
-            anomaly_scores: list = None,
-            labels: list = None,
-            wandb_logger=None,
-            step: int = None, print_results: bool = True,
-            limited_metrics: bool = True) -> Union[None, float]:
+def metrics(anomaly_maps: list = None, segmentations: list = None,
+            anomaly_scores: list = None, labels: list = None,
+            wandb_logger: wandb.run = None, step: int = None,
+            print_results: bool = True, limited_metrics: bool = True) -> Union[None, float]:
     """
     Computes evaluation metrics, prints and logs the results.
 
@@ -130,7 +135,6 @@ def metrics(anomaly_maps: list = None,
             }, step=step)
 
     # pixel-wise metrics
-
     if segmentations is not None:
 
         if limited_metrics:
@@ -141,6 +145,7 @@ def metrics(anomaly_maps: list = None,
             # print(f"Best Dice score for 100 thresholds: {best_dice:.4f}")
             # log_msg += f"pixel-wise average precision: {pixel_ap:.4f}\n"
             # log_msg += f"Best Dice score for 100 thresholds: {best_dice:.4f}\n"
+
             if wandb_logger is not None:
                 wandb_logger.log({
                     'anom_val/pixel-ap': pixel_ap
@@ -173,6 +178,8 @@ def metrics(anomaly_maps: list = None,
 
     if segmentations is not None and not limited_metrics:
         return threshold
+    else:
+        return None
 
 
 def str_to_bool(value):
@@ -430,7 +437,7 @@ def load_data(config):
             msg = "anomal_split is too high or batch_size too high, Small testloader is empty."
             assert (len(small_testloader) != 0), msg
 
-        if not config.eval:
+        if not config.eval or config.norm_fpr:
             # restore desired batch_size
             config.batch_size = temp
 

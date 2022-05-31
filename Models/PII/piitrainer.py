@@ -1,6 +1,6 @@
 import sys
 
-sys.path.append('/home/ioannis/Thesis/')
+sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
 from argparse import ArgumentParser
 import numpy as np
 import torch

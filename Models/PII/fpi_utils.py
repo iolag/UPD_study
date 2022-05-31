@@ -3,10 +3,10 @@ Adapted from: https://github.com/jemtan/FPI/blob/master/self_sup_task.py
          and: https://github.com/jemtan/PII/blob/main/poissonBlend.py"""
 
 
-import os
-import sys
-this_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.dirname(this_dir))
+# import os
+# import sys
+# this_dir = os.path.dirname(os.path.abspath(__file__))
+# sys.path.append(os.path.dirname(this_dir))
 
 from typing import Tuple
 

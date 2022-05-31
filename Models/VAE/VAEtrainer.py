@@ -1,22 +1,19 @@
 import sys
-sys.path.append('/home/ioannis/lagi/thesis/')
+sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
 from argparse import ArgumentParser
 import numpy as np
 import torch
 from collections import defaultdict
-from Models.VAE.VAEmodel import VAE
+from VAEmodel import VAE
 from time import time
 import wandb
 from torch import Tensor
 from typing import Tuple
-from Utilities.evaluate import eval_reconstruction_based
+from Utilities.evaluate import evaluate  # eval_reconstruction_based
 from Utilities.common_config import common_config
-from Utilities.utils import (save_model,
-                             seed_everything,
-                             load_data,
-                             load_pretrained,
-                             misc_settings,
-                             ssim_map,
+from Utilities.utils import (save_model, seed_everything,
+                             load_data, load_pretrained,
+                             misc_settings, ssim_map,
                              load_model)
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
@@ -33,6 +30,7 @@ def get_config():
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
 
     # Model Hyperparameters
+    parser.add_argument('--kl_weight', type=float, default=0.001, help='kl weight')
     parser.add_argument('--latent_dim', type=int, default=512, help='Model width')
     parser.add_argument('--num_layers', type=int, default=6, help='Model width')
     parser.add_argument('--width', type=int, default=16, help='First conv layer num of filters')
@@ -49,12 +47,6 @@ def get_config():
 
 config = get_config()
 
-msg = "num_images_log should be lower or equal to batch size"
-assert (config.batch_size >= config.num_images_log), msg
-
-# Select training device
-config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 # get logger and naming string
 config.method = 'VAE'
 config.naming_str, logger = misc_settings(config)
@@ -64,10 +56,7 @@ config.naming_str, logger = misc_settings(config)
 # specific seed for deterministic dataloader creation
 seed_everything(42)
 
-if config.eval:
-    config.batch_size = 100
-
-if not config.eval:
+if not config.eval or config.norm_fpr:
     train_loader, val_loader, big_testloader, small_testloader = load_data(config)
 else:
     big_testloader, small_testloader = load_data(config)
@@ -87,12 +76,10 @@ if config.load_pretrained and not config.eval:
 optimizer = torch.optim.Adam(model.parameters(), lr=config.lr, betas=(0., 0.9),
                              weight_decay=config.weight_decay)
 
-
-# Load saved model to continue training or to evaluate
+# Load saved model to evaluate
 if config.eval:
-    load_model(model, config)
+    model.load_state_dict(load_model(config))
     print('Saved model loaded.')
-
 
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
 
@@ -126,7 +113,7 @@ def vae_val_step(model, input, return_loss: bool = True) -> Tuple[dict, Tensor]:
         anomaly_map *= mask
         input_recon *= mask
 
-    anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
+    anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
 
     if return_loss:
         return loss_dict, anomaly_map, anomaly_score, input_recon
@@ -204,7 +191,7 @@ def train(model):
             for k, v in loss_dict.items():
                 train_losses[k].append(v.item())
 
-            if i_iter % config.log_frequency == 0:
+            if i_iter % config.log_frequency == 0 or i_iter == 10 or i_iter == 50 or i_iter == 100:
                 # Print training loss
                 log_msg = " - ".join([f'{k}: {np.mean(v):.4f}' for k,
                                       v in train_losses.items()])
@@ -222,11 +209,12 @@ def train(model):
                 # Reset loss dict
                 train_losses = defaultdict(list)
 
-            if i_iter % config.val_frequency == 0:
+            if i_iter % config.val_frequency == 0 or i_iter == 10 or i_iter == 50 or i_iter == 100:
                 validate(model, val_loader, i_iter, config)
 
-            if i_iter % config.anom_val_frequency == 0:  # or i_iter == 1:
-                eval_reconstruction_based(model, small_testloader, i_iter, vae_val_step, logger, config)
+            if i_iter % config.anom_val_frequency == 0 or i_iter == 10 or i_iter == 50 or i_iter == 100:
+                evaluate(model, small_testloader, i_iter,
+                         vae_val_step, logger, config, val_loader)
 
             if i_iter % config.save_frequency == 0 and i_iter != 0:
                 save_model(model, config)
@@ -244,7 +232,7 @@ if __name__ == '__main__':
     if config.eval:
         config.num_images_log = 100
         print('Evaluating model...')
-        eval_reconstruction_based(model, big_testloader, 0, vae_val_step, logger, config)
+        evaluate(model, big_testloader, 0, vae_val_step, logger, config, val_loader)
 
     else:
         train(model)

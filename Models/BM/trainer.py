@@ -5,14 +5,11 @@ on MRI are competitive to deep learning methods'
 https://arxiv.org/pdf/2011.12735.pdf
 """
 import sys
-sys.path.append('/home/ioannis/lagi/thesis/')
-
+sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
 import argparse
 from typing import Tuple
-
 import numpy as np
 import torch
-
 from DatasetPreprocessing.mri import get_camcan_slices, get_brats_slices, get_atlas_slices
 from Utilities.utils import metrics, seed_everything
 
@@ -86,7 +83,7 @@ if __name__ == '__main__':
     std = np.std(volume)  # [volume > 0])
 
     # normalize train images
-    #train_images = np.concatenate((train_images - mean) / std)
+    # train_images = np.concatenate((train_images - mean) / std)
     train_images = np.concatenate([(volume - np.mean(volume)) / np.std(volume) for volume in train_images])
     # masks = np.stack([inp > inp.min() for inp in train_images])
     # train_images *= masks
@@ -102,7 +99,7 @@ if __name__ == '__main__':
         test_images, segmentations = get_brats_slices(config)
 
     # normalize test images
-    #test_images = np.concatenate((test_images - mean) / std)
+    # test_images = np.concatenate((test_images - mean) / std)
     test_images = np.concatenate([(volume - np.mean(volume)) / np.std(volume) for volume in test_images])
     segmentations = np.concatenate(segmentations)
     # remove slices with no brain pixels in them

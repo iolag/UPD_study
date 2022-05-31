@@ -1,11 +1,13 @@
 import sys
-sys.path.append('/home/ioannis/lagi/thesis/')
+sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
 from Utilities.utils import str_to_bool
 
 
 def common_config(parser):
     parser.add_argument('--norm_vol', type=str_to_bool, default=False,
                         help='Load encoder pretrained with CCD')
+    parser.add_argument('--norm_fpr', type=str_to_bool, default=True, help='Implement normal fpr metric')
+    parser.add_argument('--nfpr', type=float, default=0.05, help='fpr for normal fpr metric')
     # General script settings
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--load_pretrained', type=str_to_bool, default=False,
@@ -25,12 +27,13 @@ def common_config(parser):
     parser.add_argument('--stadardize', type=str_to_bool, default=False,
                         help='Whether to standardize the samples to N(0,1) dataset-wise.')
     parser.add_argument('--modality', '-mod', type=str, default='MRI', help='MRI sequence')
-    parser.add_argument('--normal_split', '-ns', type=float, default=0.90, help='normal set split')
+    parser.add_argument('--normal_split', '-ns', type=float, default=0.95, help='normal set split')
     parser.add_argument('--anomal_split', '-as', type=float, default=0.90, help='anomaly set split')
     parser.add_argument('--num_workers', type=int, default=7, help='Number of workers')
 
     # MRI specific settings
-    parser.add_argument('--sequence', type=str, default='t2', help='MRI sequence', choices=['t1', 't2'])
+    parser.add_argument('--sequence', '-seq', type=str, default='t2',
+                        help='MRI sequence', choices=['t1', 't2'])
     parser.add_argument('--slice_range', type=int, nargs='+',
                         default=(0, 155), help='Lower and Upper slice index')
     parser.add_argument('--normalize', type=str_to_bool, default=False,
@@ -55,7 +58,7 @@ def common_config(parser):
     parser.add_argument('--name_add', type=str, default='', help='option to add to the wandb name')
     parser.add_argument('--log_frequency', '-lf', type=int, default=100, help='logging frequency')
     parser.add_argument('--val_frequency', '-vf', type=int, default=400, help='validation frequency')
-    parser.add_argument('--anom_val_frequency', '-avf', type=int, default=500,
+    parser.add_argument('--anom_val_frequency', '-avf', type=int, default=1000,
                         help='Validation frequency on anomalous samples')
     parser.add_argument('--val_steps', type=int, default=50, help='validation steps')
     parser.add_argument('--num_images_log', '-nil', type=int, default=20, help='Number of images to log')
@@ -65,8 +68,8 @@ def common_config(parser):
                         help='SSIM for reconstruction residual')
 
     # Save, Load, Train part settings
-    parser.add_argument('--save_frequency', type=int, default=1000, help='model save frequency')
-    parser.add_argument('--load_saved', type=str_to_bool, default=False, help='load a saved model')
-    parser.add_argument('--saved_iter', type=int, default=12000, help='iteration when model was saved')
+    parser.add_argument('--save_frequency', type=int, default=5000, help='model save/checkpoint frequency')
+    # parser.add_argument('--load_saved', type=str_to_bool, default=False, help='load a saved model')
+    parser.add_argument('--load_iter', type=str, default="", help='iteration/checkpoint of model to load')
 
     return parser

@@ -53,6 +53,9 @@ else:
     big_testloader, small_testloader = load_data(config)
 
 """"""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
+# Reproducibility
+seed_everything(config.seed)
+
 print("Initializing Model...")
 
 if config.arch == 'resnet18':
@@ -148,6 +151,9 @@ def train():
     a.remove()
     b.remove()
     c.remove()
+
+
+""""""""""""""""""""""""""""""""""" Testing """""""""""""""""""""""""""""""""""
 
 
 def test(logger):

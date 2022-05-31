@@ -101,9 +101,8 @@ class VAE(nn.Module):
         self.dropout = nn.Dropout(config.dropout)
 
         self.kl_weight = config.kl_weight
-        self.AE = config.AE
-        # find spatial resolution after last conv encoder layer using [(W−K+2P)/S]+1
 
+        # find spatial resolution after last conv encoder layer using [(W−K+2P)/S]+1
         intermediate_res = config.image_size
 
         for i in range(config.num_layers):
@@ -165,7 +164,6 @@ class VAE(nn.Module):
         x = self.dropout(x)
         # Encode
         res = self.encoder(x)
-
         # Bottleneck
         mu, logvar = torch.chunk(self.bottleneck(res), 2, dim=1)
         # Reparametrize

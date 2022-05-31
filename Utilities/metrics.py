@@ -1,9 +1,7 @@
 from functools import partial
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 from typing import Tuple
-
 import numpy as np
-from skimage import measure
 from sklearn.metrics import average_precision_score, roc_auc_score, roc_curve  # ,auc
 
 
@@ -75,6 +73,25 @@ def compute_dice_at_nfpr(preds: np.ndarray, targets: np.ndarray,
 
     # Compute Dice
     return compute_dice(np.where(preds > t, 1, 0), targets)
+
+
+def compute_thresh_at_nfpr(preds: np.ndarray, targets: np.ndarray,
+                           max_fpr: float = 0.05) -> float:
+    """
+    Computes the threshold at 5% FPR.
+
+    :param preds: An array of predicted anomaly scores.
+    :param targets: An array of ground truth labels.
+    :param max_fpr: Maximum false positive rate.
+    """
+    preds, targets = np.array(preds), np.array(targets)
+
+    # Find threshold for 5% FPR
+    fpr, _, thresholds = roc_curve(targets.reshape(-1), preds.reshape(-1))
+    t = thresholds[max(0, fpr.searchsorted(max_fpr, 'right') - 1)]
+
+    # Return threshold
+    return t
 
 
 def compute_best_dice(preds: np.ndarray, targets: np.ndarray,

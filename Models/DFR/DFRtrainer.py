@@ -1,6 +1,6 @@
 
 import sys
-sys.path.append('/home/ioannis/lagi/thesis')
+sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
 from argparse import ArgumentParser
 from time import time
 import numpy as np
@@ -12,13 +12,10 @@ from Models.DFR.dfr_utils import estimate_latent_channels
 import wandb
 import torch.nn as nn
 from Utilities.common_config import common_config
-from Utilities.evaluate import eval_dfr_pii
-from Utilities.utils import (save_model,
-                             seed_everything,
-                             load_data,
-                             load_pretrained,
-                             misc_settings,
-                             ssim_map,
+from Utilities.evaluate import evaluate
+from Utilities.utils import (save_model, seed_everything,
+                             load_data, load_pretrained,
+                             misc_settings, ssim_map,
                              load_model)
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
@@ -51,13 +48,6 @@ def get_config():
 
 config = get_config()
 
-
-# msg = "num_images_log should be lower or equal to batch size"
-# assert (config.batch_size >= config.num_images_log), msg
-
-# Select training device
-config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 # get logger and naming string
 config.method = 'DFR'
 config.naming_str, logger = misc_settings(config)
@@ -67,10 +57,7 @@ config.naming_str, logger = misc_settings(config)
 # specific seed for deterministic dataloader creation
 seed_everything(42)
 
-if config.eval:
-    config.batch_size = 100
-
-if not config.eval:
+if not config.eval or config.norm_fpr:
     train_loader, val_loader, big_testloader, small_testloader = load_data(config)
 else:
     big_testloader, small_testloader = load_data(config)
@@ -130,9 +117,9 @@ optimizer = torch.optim.Adam(model.parameters(),
 # print
 # model.extractor.feat_extractor.print_dims(torch.ones((4, 3, 128, 128)).cuda())
 
-# Load saved model toevaluate
+# Load saved model to evaluate
 if config.eval:
-    model = load_model(model, config)
+    model.load_state_dict(load_model(config))
     print('Saved model loaded.')
 
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
@@ -256,10 +243,10 @@ def train(model, optimizer, train_loader, val_loader, small_testloader, config) 
                 validate(model, val_loader, i_iter, config, logger)
 
             if i_iter % config.anom_val_frequency == 0 or i_iter == 10 or i_iter == 50 or i_iter == 100:
-                eval_dfr_pii(model, small_testloader, i_iter, val_step, logger, config)
+                evaluate(model, small_testloader, i_iter, val_step, logger, config, val_loader)
 
             if i_iter % config.save_frequency == 0 and i_iter != 0:
-                save_model(model, config)
+                save_model(model, config, i_iter)
 
             if i_iter >= config.max_steps:
                 save_model(model, config)
@@ -274,7 +261,7 @@ if __name__ == '__main__':
     if config.eval:
         config.num_images_log = 100
         print('Evaluating model...')
-        eval_dfr_pii(model, big_testloader, 0, val_step, logger, config)
+        evaluate(model, big_testloader, 0, val_step, logger, config, val_loader)
 
     else:
         train(model, optimizer, train_loader, val_loader, small_testloader, config)
