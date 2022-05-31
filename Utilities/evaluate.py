@@ -21,7 +21,6 @@ def evaluate(model: nn.Module, test_loader: DataLoader,
     masks, and for anomalous samples they return non-empty masks. The code then works the
     same and the binary label is produced by label = torch.where(mask.sum(dim=(1, 2, 3)) > 0, 1, 0)
     """
-
     labels = []
     anomaly_scores = []
     anomaly_maps = []
