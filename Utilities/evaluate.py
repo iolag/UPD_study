@@ -1,6 +1,6 @@
 import sys
 import os
-sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
+sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
 from torch import nn
 import torch
 from Utilities.utils import metrics
@@ -8,7 +8,7 @@ import wandb
 os.environ["WANDB_SILENT"] = "true"
 from argparse import Namespace
 from torch.utils.data import DataLoader
-from Utilities.dice_normfpr import dice_normal_nfpr
+from Utilities.normFPR import dice_f1_normal_nfpr
 from tqdm import tqdm
 
 
@@ -28,41 +28,95 @@ def evaluate(model: nn.Module, test_loader: DataLoader,
 
     # forward pass the testloader to extract anomaly maps, scores, masks, labels
     for input, mask in tqdm(test_loader, desc="Test set"):
+        if config.patches:
+            # input.shape = [samples,crops,c,h,w]
+            # mask.shape = [samples,crops,1,h,w]
+            b, num_crops, _, _, _ = input.shape
+            input = input.view(input.shape[0] * input.shape[1], *input.shape[2:])  # [samples*crops,c,h,w]
+            #  print(input.shape)
+            # mask = mask.reshape(mask.shape[0] * mask.shape[1], *mask.shape[2:])# [samples*crops,1,h,w]
+            # print(mask.shape)
+            x = val_step(model, input.to(config.device), return_loss=False)
+            # print(x[1])
+            per_crop_scores = x[1].view(b, config.num_patches)  # [samples,crops]
+            # print(per_crop_scores.shape)
+            import math
 
-        # forward pass, x = [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
-        x = val_step(model, input.to(config.device), return_loss=False)
+            anomaly_score = per_crop_scores.mean(1)  # [samples]
+            discard_nan = False
+            for i in anomaly_score:
 
-        anomaly_maps.append(x[0].cpu())
-        anomaly_scores.append(x[1].cpu())
-        segmentations.append(mask)
-        label = torch.where(mask.sum(dim=(1, 2, 3)) > 0, 1, 0)
-        labels.append(label)
+                if math.isnan(i):
+                    discard_nan = True
+            if not discard_nan:
+                # print(anomaly_score.shape)
+                anomaly_scores.append(anomaly_score.cpu())
+                # [samples, crops] crop-wise binary vector
+                crop_label = torch.where(mask.sum(dim=(2, 3, 4)) > 0, 1, 0)  # [samples, crops]
+                # print(crop_label.shape)
+                label = torch.where(crop_label.sum(dim=1) > 0, 1, 0)  # [samples] sample-wise binary vector
+                # print(label.shape)
+                labels.append(label)
+                if config.dataset == 'IDRID':
+
+                    map = x[0].view(b, 1, config.image_size * int(math.sqrt(config.num_patches)),
+                                    config.image_size * int(math.sqrt(config.num_patches)))
+                    anomaly_maps.append(map.cpu())
+                    segmentations.append(mask)
+        else:
+            # forward pass, x = [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
+            x = val_step(model, input.to(config.device), return_loss=False)
+
+            anomaly_maps.append(x[0].cpu())
+            anomaly_scores.append(x[1].cpu())
+            segmentations.append(mask)
+            label = torch.where(mask.sum(dim=(1, 2, 3)) > 0, 1, 0)
+            labels.append(label)
 
     # calculate metrics like AP, AUROC, on pixel and/or image level
-    if config.norm_fpr:
-        config.nfpr = 0.05
-        dice_normal_nfpr(model, val_loader, val_step, config, logger, i_iter, anomaly_maps, segmentations)
-        config.nfpr = 0.1
-        dice_normal_nfpr(model, val_loader, val_step, config, logger, i_iter, anomaly_maps, segmentations)
 
-    if config.modality in ['CXR', 'OCT']:
+    if config.modality in ['CXR', 'OCT'] or (config.dataset != 'IDRID' and config.modality == 'RF'):
         segmentations = None  # disables pixel level evaluation in metrics()
 
     threshold = metrics(anomaly_maps, segmentations, anomaly_scores,
                         labels, logger, i_iter, config.limited_metrics)
 
+    if config.normal_fpr:
+        config.nfpr = 0.05
+        dice_f1_normal_nfpr(model, val_loader, config, logger, i_iter, val_step,
+                            anomaly_maps, segmentations, anomaly_scores, labels)
+        config.nfpr = 0.1
+        dice_f1_normal_nfpr(model, val_loader, config, logger, i_iter, val_step,
+                            anomaly_maps, segmentations, anomaly_scores, labels)
+
+    # if config.patches:
+    #     return
+
     # do a single forward pass to extract stuff to log
     # the batch size is num_images_log for test_loaders, so a single forward pass is enough
-    input, mask = next(iter(test_loader))
 
+    input, mask = next(iter(test_loader))
+    if config.patches:
+        input = input.view(input.shape[0] * input.shape[1], *input.shape[2:])
     # forward pass, x = [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
     x = val_step(model, input.to(config.device), return_loss=False)
+
+    if config.patches:
+        input = input.view(4, config.img_channels, config.image_size * int(math.sqrt(config.num_patches)),
+                           config.image_size * int(math.sqrt(config.num_patches)))
+        map = x[0].view(4, 1, config.image_size * int(math.sqrt(config.num_patches)),
+                        config.image_size * int(math.sqrt(config.num_patches)))
+
+        mask = mask.squeeze(1)
+
+    else:
+        map = x[0]
 
     # Log images to wandb
     input_images = list(input[:config.num_images_log].cpu())
     targets = list(mask.float()[:config.num_images_log].cpu())
 
-    anomaly_images = list(x[0][:config.num_images_log].cpu())
+    anomaly_images = list(map[:config.num_images_log].cpu())
     logger.log({
         'anom_val/input images': [wandb.Image(img) for img in input_images],
         'anom_val/targets': [wandb.Image(img) for img in targets],

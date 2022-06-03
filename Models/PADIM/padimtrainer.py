@@ -1,5 +1,5 @@
 import sys
-sys.path.append('/home/ioannis/lagi/thesis')
+sys.path.append('/u/home/lagi/thesis/UAD_study/')
 from random import sample
 import argparse
 import numpy as np
@@ -32,25 +32,21 @@ def get_config():
 
 config = get_config()
 
-msg = "num_images_log should be lower or equal to batch size"
-assert (config.batch_size >= config.num_images_log), msg
-
-# Select training device
-config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 # get naming string
 config.method = 'PADIM'
+config.disable_wandb = True
 naming_str, _ = misc_settings(config)
+
+if config.eval:
+    logger = wandb.init(project='PADIM', name=naming_str, config=config, reinit=True)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
 
 # specific seed for deterministic dataloader creation
 seed_everything(42)
 
-if not config.eval:
-    train_loader, val_loader, big_testloader, small_testloader = load_data(config)
-else:
-    big_testloader, small_testloader = load_data(config)
+train_loader, val_loader, big_testloader, small_testloader = load_data(config)
+
 
 """"""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
 # Reproducibility
@@ -156,7 +152,7 @@ def train():
 """"""""""""""""""""""""""""""""""" Testing """""""""""""""""""""""""""""""""""
 
 
-def test(logger):
+def test(dataloader, normal_test: bool = False):
 
     # forward hook first 3 layer final activations
     outputs = []
@@ -179,12 +175,18 @@ def test(logger):
     anomaly_maps = []
     test_outputs = OrderedDict([('layer1', []), ('layer2', []), ('layer3', [])])
     # extract test set features
-    for input, mask in tqdm(big_testloader, '| feature extraction | test | %s' % config.modality):
 
-        inputs.append(input)
-        label = torch.where(mask.sum(dim=(1, 2, 3)) > 0, 1, 0)
-        labels.append(label)
-        segmentations.append(mask)
+    for batch in tqdm(dataloader, '| feature extraction | test | %s' % config.modality):
+        if normal_test:  # for normal fpr calc we pass normal set
+            input = batch
+            inputs.append(input)
+        else:
+            input = batch[0]
+            mask = batch[1]
+            inputs.append(input)
+            label = torch.where(mask.sum(dim=(1, 2, 3)) > 0, 1, 0)
+            labels.append(label)
+            segmentations.append(mask)
 
         # if grayscale repeat channel dim
         if input.shape[1] == 1:
@@ -240,20 +242,18 @@ def test(logger):
         for i in range(anomaly_map.shape[0]):
             anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=4)  # [samples, h , w]
         # https://pytorch.org/vision/stable/generated/torchvision.transforms.GaussianBlur.html
+
+        # noticed that when a single sample batch occures, anomaly_map loses its batch dim somewhere above
+        if len(anomaly_map.shape) == 2:
+            anomaly_map = np.expand_dims(anomaly_map, 0)
+
         anomaly_maps.append(anomaly_map)
 
     anomaly_maps = np.concatenate(anomaly_maps)
 
-    evaluation(inputs, segmentations, labels, anomaly_maps, logger)
-
     a.remove()
     b.remove()
     c.remove()
-
-    return
-
-
-def evaluation(inputs, segmentations, labels, anomaly_maps, logger):
 
     # hacky stuff to get it compatible with my function metrics()
     anomaly_maps = torch.from_numpy(anomaly_maps)
@@ -263,35 +263,65 @@ def evaluation(inputs, segmentations, labels, anomaly_maps, logger):
     inputs = torch.cat(inputs)  # tensor of shape num_samples,1,h,w
     inputs = inputs.reshape(s, 1, 1, h, w)
     inputs = [inp for inp in inputs]
+    #
 
     # apply brainmask for MRI
     if config.modality == 'MRI':
         masks = [inp > inp.min() for inp in inputs]
         anomaly_maps = [map * mask for map, mask in zip(anomaly_maps, masks)]
+        anomaly_scores = [torch.Tensor([map[inp > inp.min()].mean()
+                                       for map, inp in zip(anomaly_maps, inputs)])]
+    else:
+        anomaly_scores = [torch.Tensor([map.mean() for map in anomaly_maps])]
 
-    anomaly_scores = [torch.Tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_maps, inputs)])]
+    return inputs, segmentations, labels, anomaly_maps, anomaly_scores
+
+
+from Utilities.normFPR import dice_f1_normal_nfpr
+
+
+def evaluation(inputs, segmentations, labels, anomaly_maps, anomaly_scores):
+
+    if config.modality in ['CXR', 'OCT'] or (config.dataset != 'IDRID' and config.modality == 'RF'):
+        segmentations = None  # disables pixel level evaluation in metrics()
+
     threshold = metrics(anomaly_maps, segmentations, anomaly_scores,
                         labels, logger, 0, limited_metrics=False)
 
+    if config.normal_fpr:
+        _, _, _, normal_residuals, normal_scores = test(val_loader, normal_test=True)
+        config.nfpr = 0.05
+        dice_f1_normal_nfpr(model, val_loader, config, logger, 0, None,
+                            anomaly_maps, segmentations, anomaly_scores,
+                            labels, normal_residuals, normal_scores)
+        config.nfpr = 0.1
+        dice_f1_normal_nfpr(model, val_loader, config, logger, 0, None,
+                            anomaly_maps, segmentations, anomaly_scores,
+                            labels, normal_residuals, normal_scores)
+
     # Log images to wandb
     input_images = list(inputs[:config.num_images_log])
-    targets = list(segmentations[0].float()[:config.num_images_log])
+
     anomaly_images = anomaly_maps[:config.num_images_log]
-
-    # create thresholded images on the threshold of best posible dice score on the dataset
-    anomaly_thresh_map = torch.cat(anomaly_maps)[:config.num_images_log]
-    anomaly_thresh_map = torch.where(anomaly_thresh_map < threshold,
-                                     torch.FloatTensor([0.]),
-                                     torch.FloatTensor([1.]))
-
-    anomaly_thresh = list(anomaly_thresh_map)
-
     logger.log({
         'anom_val/input images': [wandb.Image(img) for img in input_images],
-        'anom_val/targets': [wandb.Image(img) for img in targets],
-        'anom_val/anomaly maps': [wandb.Image(img) for img in anomaly_images],
-        'anom_val/thresholded maps': [wandb.Image(img) for img in anomaly_thresh],
+        'anom_val/anomaly maps': [wandb.Image(img) for img in anomaly_images]
     }, step=0)
+
+    if not config.limited_metrics and segmentations is not None:
+        # create thresholded images on the threshold of best posible dice score on the dataset
+        targets = list(segmentations[0].float()[:config.num_images_log])
+        anomaly_thresh_map = torch.cat(anomaly_maps)[:config.num_images_log]
+        anomaly_thresh_map = torch.where(anomaly_thresh_map < threshold,
+                                         torch.FloatTensor([0.]),
+                                         torch.FloatTensor([1.]))
+
+        anomaly_thresh = list(anomaly_thresh_map)
+
+        logger.log({
+            'anom_val/targets': [wandb.Image(img) for img in targets],
+            'anom_val/thresholded maps': [wandb.Image(img) for img in anomaly_thresh]
+        }, step=0)
 
 
 if __name__ == '__main__':
@@ -299,5 +329,4 @@ if __name__ == '__main__':
     if not config.eval:
         train()
     else:
-        logger = wandb.init(project='PADIM', name=naming_str, config=config, reinit=True)
-        test(logger)
+        evaluation(*test(big_testloader))

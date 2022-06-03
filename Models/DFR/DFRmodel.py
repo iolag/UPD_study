@@ -337,7 +337,8 @@ class FeatureAE(nn.Module):
         self.decoder = decoder
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
-        feats = self.extractor(x)
+        with torch.no_grad():
+            feats = self.extractor(x)
         z = self.encoder(feats)
         rec = self.decoder(z)
         return feats, rec

@@ -1,6 +1,6 @@
 import sys
 
-sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
+sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
 from argparse import ArgumentParser
 import numpy as np
 import torch
@@ -40,12 +40,6 @@ def get_config():
 
 config = get_config()
 
-msg = "num_images_log should be lower or equal to batch size"
-assert (config.batch_size >= config.num_images_log), msg
-
-# Select training device
-config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 # get logger and naming string
 config.method = 'PII'
 config.naming_str, logger = misc_settings(config)
@@ -54,9 +48,6 @@ config.naming_str, logger = misc_settings(config)
 
 # specific seed for deterministic dataloader creation
 seed_everything(42)
-
-if config.eval:
-    config.batch_size = 100
 
 if not config.eval:
     train_loader, val_loader, big_testloader, small_testloader = load_data(config)

@@ -1,6 +1,6 @@
 
 import sys
-sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
+sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
 from argparse import ArgumentParser
 from time import time
 import numpy as np
@@ -28,7 +28,7 @@ def get_config():
     # Training Hyperparameters
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='Weight decay')
-    parser.add_argument('--max_steps', type=int, default=10000, help='Number of training steps')
+    parser.add_argument('--max_steps', '-ms', type=int, default=10000, help='Number of training steps')
     parser.add_argument('--batch_size', '-bs', type=int, default=4, help='Batch size')
 
     # Model settings
@@ -40,7 +40,7 @@ def get_config():
                         help='Alingment step interpolation mode.')
     # stride 2 output embedding volume: c x 64 x 64 for input 128
     # For default of paper 256-->s=4 -> 64x64, s=2 -> 128x128. But for our 128 input s=4 doesn't work
-    parser.add_argument('--stride', type=int, default=4,
+    parser.add_argument('--stride', type=int, default=2,
                         help='Stride of mean filter. 4 -> embedding spatial size 64, 2 -> 128.')
 
     return parser.parse_args()
@@ -57,14 +57,16 @@ config.naming_str, logger = misc_settings(config)
 # specific seed for deterministic dataloader creation
 seed_everything(42)
 
-if not config.eval or config.norm_fpr:
-    train_loader, val_loader, big_testloader, small_testloader = load_data(config)
-else:
-    big_testloader, small_testloader = load_data(config)
+train_loader, val_loader, big_testloader, small_testloader = load_data(config)
+
+# small_testloader = big_testloader
 
 """"""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
 # Reproducibility
 seed_everything(config.seed)
+
+if config.image_size == 256:
+    config.stride = 4
 
 if config.arch == 'vgg19':
     from DFRmodel import Extractor, FeatureAE, _set_requires_grad_false
@@ -81,7 +83,8 @@ if config.latent_channels is None:
                           stride=config.stride).to(config.device)
 
     if config.arch != 'vgg19':
-        extractor.feat_extractor.backbone.conv1.stride = 1
+        pass
+        #extractor.feat_extractor.backbone.conv1.stride = 1
 
     config.latent_channels = estimate_latent_channels(extractor, train_loader)
     print('Estimated number of latent channels:{}'.format(config.latent_channels))
@@ -115,7 +118,7 @@ if config.load_pretrained:
 optimizer = torch.optim.Adam(model.parameters(),
                              lr=config.lr, weight_decay=config.weight_decay)
 # print
-# model.extractor.feat_extractor.print_dims(torch.ones((4, 3, 128, 128)).cuda())
+#model.extractor.feat_extractor.print_dims(torch.ones((4, 3, 128, 128)).cuda())
 
 # Load saved model to evaluate
 if config.eval:
@@ -156,8 +159,16 @@ def val_step(model, input, return_loss: bool = True) -> Tuple[float, Tensor, Ten
     if config.modality in ['MRI', 'MRInoram']:
         mask = torch.stack([inp > inp.min() for inp in input])
         anomaly_map *= mask
-
-    anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
+    if config.modality in ['RF']:
+        mask = torch.stack([inp.mean(0, keepdim=True) != 0 for inp in input])
+        anomaly_map *= mask
+    if config.modality in ['MRI', 'MRInoram']:
+        anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
+    if config.modality in ['RF']:
+        anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) != 0].mean()
+                                     for map, inp in zip(anomaly_map, input)])
+    else:
+        anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
 
     if return_loss:
         return loss.item(), anomaly_map, anomaly_score
@@ -242,7 +253,7 @@ def train(model, optimizer, train_loader, val_loader, small_testloader, config) 
             if i_iter % config.val_frequency == 0:
                 validate(model, val_loader, i_iter, config, logger)
 
-            if i_iter % config.anom_val_frequency == 0 or i_iter == 10 or i_iter == 50 or i_iter == 100:
+            if i_iter % config.anom_val_frequency == 0:  # or i_iter == 10 or i_iter == 50 or i_iter == 100 or i_iter == 500:
                 evaluate(model, small_testloader, i_iter, val_step, logger, config, val_loader)
 
             if i_iter % config.save_frequency == 0 and i_iter != 0:
@@ -259,7 +270,6 @@ def train(model, optimizer, train_loader, val_loader, small_testloader, config) 
 if __name__ == '__main__':
 
     if config.eval:
-        config.num_images_log = 100
         print('Evaluating model...')
         evaluate(model, big_testloader, 0, val_step, logger, config, val_loader)
 

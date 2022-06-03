@@ -5,7 +5,7 @@ on MRI are competitive to deep learning methods'
 https://arxiv.org/pdf/2011.12735.pdf
 """
 import sys
-sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
+sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
 import argparse
 from typing import Tuple
 import numpy as np

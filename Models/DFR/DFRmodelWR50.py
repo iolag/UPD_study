@@ -27,7 +27,7 @@ class WR50FeatureExtractor(nn.Module):
         super().__init__()
 
         self.backbone = models.wide_resnet50_2(pretrained=True)
-        self.backbone.conv1.stride = 1
+        #self.backbone.conv1.stride = 1
         self.outputs = []
 
         def hook(module, input, output):
@@ -35,15 +35,15 @@ class WR50FeatureExtractor(nn.Module):
 
         for i in range(start_layer, last_layer):
             if i == 0:
-                self.backbone.relu.register_forward_hook(hook)
-            if i == 1:
                 self.backbone.layer1.register_forward_hook(hook)
-            if i == 2:
+            if i == 1:
                 self.backbone.layer2.register_forward_hook(hook)
-            if i == 3:
+            if i == 2:
                 self.backbone.layer3.register_forward_hook(hook)
-            if i == 4:
-                self.backbone.layer4.register_forward_hook(hook)
+            # if i == 3:
+            #     self.backbone.layer3.register_forward_hook(hook)
+            # if i == 4:
+            #     self.backbone.layer4.register_forward_hook(hook)
         # self.print_dims(torch.ones((4, 3, 128, 128)))
         _set_requires_grad_false(self.backbone)
 

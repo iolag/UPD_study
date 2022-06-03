@@ -1,5 +1,5 @@
 import sys
-sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
+sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
 from argparse import ArgumentParser
 import numpy as np
 import torch
@@ -112,8 +112,10 @@ def vae_val_step(model, input, return_loss: bool = True) -> Tuple[dict, Tensor]:
         mask = torch.stack([inp > inp.min() for inp in input])
         anomaly_map *= mask
         input_recon *= mask
-
-    anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
+    if config.modality == 'MRI':
+        anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
+    else:
+        anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
 
     if return_loss:
         return loss_dict, anomaly_map, anomaly_score, input_recon

@@ -1,20 +1,28 @@
 import sys
-sys.path.append('/home/ioannis/lagi/thesis/UAD_study')
+sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
 from Utilities.utils import str_to_bool
 
 
 def common_config(parser):
+    parser.add_argument('--patches', type=str_to_bool, default=False, help='')
+    parser.add_argument('--num_patches', '-np', type=int, default=9,
+                        help='', choices=[1, 4, 9, 16, 25])
+
     parser.add_argument('--norm_vol', type=str_to_bool, default=False,
                         help='Load encoder pretrained with CCD')
-    parser.add_argument('--norm_fpr', type=str_to_bool, default=True, help='Implement normal fpr metric')
+    # Normal FPR metric settings
+    parser.add_argument('--normal_fpr', type=str_to_bool, default=False, help='Implement normal fpr metric')
+    parser.add_argument('--dice_normal', type=str_to_bool, default=False, help='Implement normal fpr metric')
+    parser.add_argument('--f1_normal', type=str_to_bool, default=False, help='Implement normal fpr metric')
     parser.add_argument('--nfpr', type=float, default=0.05, help='fpr for normal fpr metric')
+
     # General script settings
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--load_pretrained', type=str_to_bool, default=False,
                         help='Load encoder pretrained with CCD')
     parser.add_argument('--disable_wandb', '-dw', type=str_to_bool,
                         default=False, help='disable wandb logging')
-    parser.add_argument('--eval', type=str_to_bool, default=False, help='Evaluation mode')
+    parser.add_argument('--eval', '-ev', type=str_to_bool, default=False, help='Evaluation mode')
     parser.add_argument('--print_model', type=str_to_bool, default=False,
                         help='Print model information with torchsummary.summary')
     parser.add_argument('--limited_metrics', '-lm', type=str_to_bool, default=True,
@@ -55,7 +63,7 @@ def common_config(parser):
                         help='Which dataset to use.', choices=['KAGGLE', 'LAG', 'IDRID'])
 
     # Logging settings
-    parser.add_argument('--name_add', type=str, default='', help='option to add to the wandb name')
+    parser.add_argument('--name_add', '-nam', type=str, default='', help='option to add to the wandb name')
     parser.add_argument('--log_frequency', '-lf', type=int, default=100, help='logging frequency')
     parser.add_argument('--val_frequency', '-vf', type=int, default=400, help='validation frequency')
     parser.add_argument('--anom_val_frequency', '-avf', type=int, default=1000,

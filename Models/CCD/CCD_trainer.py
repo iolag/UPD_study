@@ -4,34 +4,30 @@ import numpy as np
 import torch.nn as nn
 from models import ContrastiveModel
 from losses import SimCLRLoss
-import os
 from collections import defaultdict
 from time import time
-from Utilities.utils import str_to_bool
+from Utilities.common_config import common_config
+from Utilities.utils import (save_model, seed_everything, misc_settings, str_to_bool)
+
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
 
 def get_config():
-    parser = argparse.ArgumentParser(description='CCD')
+    parser = argparse.ArgumentParser()
+    parser = common_config(parser)
 
+    parser.add_argument('--only_simclr', type=int, default=128, help='Train only with the SimClr task')
     parser.add_argument('--backbone-arch', type=str, default='wide_resnet50_2', help='Backbone architecture.',
                         choices=['resnet18', 'resnet50', 'wide_resnet50_2', 'vae', 'fanogan', 'vgg19'])
     parser.add_argument('--cls-head-number', default=2, type=int)
-    parser.add_argument('--image-size', type=int, default=128, help='Image size')
-    parser.add_argument('--img-channels', type=int, default=3, help='Image channels')
-    parser.add_argument('--modality', type=str, default='MRI', help='modality')
-    parser.add_argument('--sequence', type=str, default='t2', help='MRI sequence')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--max-epochs', type=int, default=200, help='Number of training epochs')
     parser.add_argument('--max-steps', type=int, default=20000, help='Number of training steps')
     parser.add_argument('--save-checkpoint', type=int, default=2000, help='Checkpoint save frequency')
     parser.add_argument('--log-frequency', default=200, type=int)
-    parser.add_argument('--datasets-dir', type=str,
-                        default='/datasets/Datasets/', help='datasets_dir')
 
     # VAE Hyperparameters
-    parser.add_argument('--AE', type=str_to_bool, default=False, help='Turn model into a classic AE')
     parser.add_argument('--latent_dim', type=int, default=512, help='Model width')
     parser.add_argument('--num_layers', type=int, default=6, help='Model width')
     parser.add_argument('--width', type=int, default=16, help='First conv layer num of filters')
@@ -44,16 +40,6 @@ def get_config():
     parser.add_argument('--dropout', type=float, default=0.0,
                         help='Input Dropout like https://doi.org/10.1145/1390156.1390294')
 
-    # CXR specific settings
-    parser.add_argument('--sup_devices', type=str_to_bool, default=False,
-                        help='Whether to include CXRs with support devices')
-    parser.add_argument('--AP_only', type=str_to_bool, default=True,
-                        help='Whether to include only AP CXRs')
-    parser.add_argument('--pathology', type=str, default='enlarged',
-                        help='Pathology of test set.', choices=['enlarged', 'effusion', 'opacity'])
-    parser.add_argument('--sex', type=str, default='both',
-                        help='Sex of patients', choices=['male', 'female', 'both'])
-
     config = parser.parse_args()
     return config
 
@@ -63,11 +49,14 @@ config = get_config()
 if config.backbone_arch == 'fanogan':
     config.latent_dim = 128
 
-# Select training device
-config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# get logger and naming string
+config.method = 'CCD'
+config.naming_str, _ = misc_settings(config)
 
-# Dataset
-print('Retrieving dataset...')
+
+""""""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
+
+print('Loading dataset...')
 
 if config.modality == 'COL':
     from Models.CCD.datasets.COL_CCD import get_train_dataloader
@@ -75,10 +64,17 @@ elif config.modality == 'MRI':
     from Models.CCD.datasets.MRI_CCD import get_train_dataloader
 elif config.modality == 'CXR':
     from Models.CCD.datasets.CXR_CCD import get_train_dataloader
+elif config.modality == 'CXR':
+    from Models.CCD.datasets.CXR_CCD import get_train_dataloader
 
 train_dataloader = get_train_dataloader(config)
 
-# Model
+""""""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
+# Reproducibility
+seed_everything(config.seed)
+
+# Init model
+print("Initializing model...")
 model = ContrastiveModel(config, features_dim=128).to(config.device)
 
 # Loss, Optimizer
@@ -87,15 +83,6 @@ optimizer = torch.optim.SGD(model.parameters(), lr=config.lr, weight_decay=0.000
 
 # Initiate CELoss module
 celoss = nn.CrossEntropyLoss()
-
-# Multi purpose name string
-
-name = f'CCD_{config.backbone_arch}_{config.modality}'
-
-if config.modality == 'MRI':
-    name += f'_{config.sequence}'
-
-os.makedirs('pretrained_models', exist_ok=True)
 
 
 def adjust_lr(lr, optimizer, epoch, max_epochs):
@@ -143,15 +130,15 @@ def train():
                 train_losses = defaultdict(list)
 
             if i_iter % config.save_checkpoint == 0:
-                torch.save(model.backbone.state_dict(), f'pretrained_models/{name}.pth')
+                save_model(model.backbone, config)
 
             if i_iter % config.max_steps == 0:
                 print(f'Reached {config.max_steps} iterations. Finished pre-training with CCD.')
-                torch.save(model.backbone.state_dict(), f'pretrained_models/{name}.pth')
+                save_model(model.backbone, config)
                 return
 
     print(f'Reached { config.max_epochs} epochs. Finished pre-training with CCD.')
-    torch.save(model.backbone.state_dict(), f'pretrained_models/{name}.pth')
+    save_model(model.backbone, config)
 
 
 def train_step(batch):
@@ -182,12 +169,17 @@ def train_step(batch):
     loss_cla = celoss(logits, labels)
     loss_con = criterion(output)
 
-    loss = loss_con + loss_cla
+    if config.only_simclr:
 
-    loss.backward()
-    optimizer.step()
+        loss_con.backward()
+        optimizer.step()
+        return {'loss_con': loss_con}
 
-    return {'loss_cla': loss_cla, 'loss_con': loss_con, 'loss': loss}
+    else:
+        loss = loss_con + loss_cla
+        loss.backward()
+        optimizer.step()
+        return {'loss_cla': loss_cla, 'loss_con': loss_con, 'loss': loss}
 
 
 if __name__ == '__main__':

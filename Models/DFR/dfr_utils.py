@@ -19,7 +19,7 @@ def estimate_latent_channels(extractor, train_loader):
         feats.append(feat)
         del feat
         i_samples += b
-        if i_samples > 100:
+        if i_samples > 20:
             break
 
     # Concatenate and center feats
