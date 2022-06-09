@@ -27,7 +27,7 @@ class WR50FeatureExtractor(nn.Module):
         super().__init__()
 
         self.backbone = models.wide_resnet50_2(pretrained=True)
-        #self.backbone.conv1.stride = 1
+        # self.backbone.conv1.stride = 1
         self.outputs = []
 
         def hook(module, input, output):
@@ -123,7 +123,6 @@ class Extractor(nn.Module):
         self,
         start_layer: int = 0,
         last_layer: int = 4,  # num of backbone layers to use
-        upsample_mode: str = 'bilinear',
         kernel_size: int = 4,
         stride: int = 4,
         featmap_size: int = 128,  # input img size
@@ -135,9 +134,8 @@ class Extractor(nn.Module):
         self.feat_extractor = WR50FeatureExtractor(start_layer, last_layer)
 
         self.featmap_size = featmap_size
-        self.upsample_mode = upsample_mode
+
         self.is_agg = is_agg
-        self.align_corners = True if upsample_mode == "bilinear" else None
 
         # Calculate padding
         # not needed for stride=kernel_size=4, since it's 0 then and out_size can be calculated
@@ -177,8 +175,8 @@ class Extractor(nn.Module):
         for _, feat_map in feat_maps.items():
             # Resizing to img_size
             feat_map = F.interpolate(feat_map, size=self.featmap_size,
-                                     mode=self.upsample_mode,
-                                     align_corners=self.align_corners)
+                                     mode='bilinear',
+                                     align_corners=True)
 
             # "aggregate" with 4x4 spatial mean filter
             # needs padding for the case of stride == 2 to make output_size 128 and not 127.
@@ -202,7 +200,6 @@ class FeatureAE(nn.Module):
                  use_batchnorm: bool = True,
                  start_layer: int = 1,
                  last_layer: int = 4,
-                 upsample_mode: str = "bilinear",
                  stride: int = 4):
 
         super().__init__()
@@ -211,7 +208,6 @@ class FeatureAE(nn.Module):
 
         self.extractor = Extractor(start_layer=start_layer,
                                    last_layer=last_layer,
-                                   upsample_mode=upsample_mode,
                                    featmap_size=img_size,
                                    stride=stride)
 
@@ -278,7 +274,6 @@ if __name__ == '__main__':
                    use_batchnorm=True,
                    start_layer=1,
                    last_layer=4,
-                   upsample_mode="bilinear",
                    stride=2
                    ).to(config.device)
 

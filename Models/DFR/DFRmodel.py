@@ -207,7 +207,6 @@ class Extractor(nn.Module):
         start_layer: int = 4,
         last_layer: int = 12,  # num of backbone layers to use
         backbone: str = 'vgg19',
-        upsample_mode: str = 'bilinear',
         kernel_size: int = 4,
         stride: int = 4,
         featmap_size: int = 256,  # input img size
@@ -220,9 +219,7 @@ class Extractor(nn.Module):
         self.feat_extractor = backbone_nets[backbone](layer_names=cnn_layers)
 
         self.featmap_size = featmap_size
-        self.upsample_mode = upsample_mode
         self.is_agg = is_agg
-        self.align_corners = True if upsample_mode == "bilinear" else None
 
         # Calculate padding
         # not needed for stride=kernel_size=4, since it's 0 then and out_size can be calculated
@@ -256,15 +253,16 @@ class Extractor(nn.Module):
         return channels
 
     def forward(self, inp: Tensor) -> Tensor:
-        feat_maps = self.feat_extractor(inp)
+        with torch.no_grad():
+            feat_maps = self.feat_extractor(inp)
 
         features = []
         for _, feat_map in feat_maps.items():
             # Resizing to img_size
 
             feat_map = F.interpolate(feat_map, size=self.featmap_size,
-                                     mode=self.upsample_mode,
-                                     align_corners=self.align_corners)
+                                     mode='bilinear',
+                                     align_corners=True)
 
             # "aggregate" with 4x4 spatial mean filter
             # needs padding for the case of stride == 2 to make output_size 128 and not 127.
@@ -288,7 +286,6 @@ class FeatureAE(nn.Module):
                  use_batchnorm: bool = True,
                  start_layer: int = 4,
                  last_layer: int = 12,
-                 upsample_mode: str = "bilinear",
                  stride=4):
 
         super().__init__()
@@ -296,7 +293,6 @@ class FeatureAE(nn.Module):
 
         self.extractor = Extractor(start_layer=start_layer,
                                    last_layer=last_layer,
-                                   upsample_mode=upsample_mode,
                                    featmap_size=img_size,
                                    stride=stride)
 
@@ -355,7 +351,6 @@ if __name__ == '__main__':
     config.latent_channels = 150
     config.backbone = 'vgg19'
     config.num_backbone_layers = 12
-    config.upsample_mode = 'nearest'
     stride = config.stride = 2  # stride 2 output embedding cx64x64 for input 128
     x = torch.randn((2, 1, config.img_size, config.img_size), device=config.device)
 
@@ -366,7 +361,6 @@ if __name__ == '__main__':
         latent_channels=config.latent_channels,
         start_layer=0,
         last_layer=16,
-        upsample_mode=config.upsample_mode,
         stride=config.stride
     ).to(config.device)
 

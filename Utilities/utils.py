@@ -27,23 +27,63 @@ def load_pretrained(model, config):
     pretrained = f'CCD_{config.arch}_{config.modality}'
     if config.modality == 'MRI':
         pretrained += f'_{config.sequence}'
+    pretrained += f'_{config.name_add}'
 
-    model_dict = model.state_dict()
-    pretrained_dict = torch.load(
-        f'/u/home/lagi/thesis/UAD_study/Models/CCD/pretrained_models/{pretrained}.pth')
-    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
-    model_dict.update(pretrained_dict)
-    model.load_state_dict(model_dict)
-    print('Pretrained backbone loaded.')
+    if config.arch == 'vae':
+        enc_dict = model.encoder.state_dict()
+        pretrained_dict = torch.load(
+            f'/u/home/lagi/thesis/UAD_study/Models/CCD/saved_models/{config.modality}/{pretrained}_encoder_.pth')
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in enc_dict}
+        enc_dict.update(pretrained_dict)
+        model.encoder.load_state_dict(enc_dict)
+        bn_dict = model.bottleneck.state_dict()
+        pretrained_dict = torch.load(
+            f'/u/home/lagi/thesis/UAD_study/Models/CCD/saved_models/{config.modality}/{pretrained}_bottleneck_.pth')
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in bn_dict}
+        bn_dict.update(pretrained_dict)
+        model.bottleneck.load_state_dict(bn_dict)
+        print('Pretrained backbone loaded.')
+
+    else:
+        model_dict = model.state_dict()
+        pretrained_dict = torch.load(
+            f'/u/home/lagi/thesis/UAD_study/Models/CCD/saved_models/{config.modality}/{pretrained}_.pth')
+
+        for k, v in model_dict.items():
+            if k not in pretrained_dict:
+                print(f'weights for {k} not in pretrained weight state_dict()')
+
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+        model_dict.update(pretrained_dict)
+        model.load_state_dict(model_dict)
+        print('Pretrained backbone loaded.')
     return model
 
 
 def save_model(model, config, i_iter: Union[int, str] = ""):
-    torch.save(model.state_dict(), f'saved_models/{config.modality}/{config.naming_str}{i_iter}.pth')
+    if config.method == 'RD':
+        torch.save(model['decoder'].state_dict(),
+                   f'saved_models/{config.modality}/{config.name}_dec_{i_iter}.pth')
+        torch.save(model['bn'].state_dict(),
+                   f'saved_models/{config.modality}/{config.name}_bn_{i_iter}.pth')
+
+    elif config.method == 'CCD' and config.backbone_arch == 'vae':
+        torch.save(model['encoder'].state_dict(),
+                   f'saved_models/{config.modality}/{config.name}_encoder_{i_iter}.pth')
+        torch.save(model['bottleneck'].state_dict(),
+                   f'saved_models/{config.modality}/{config.name}_bottleneck_{i_iter}.pth')
+
+    else:
+        torch.save(model.state_dict(), f'saved_models/{config.modality}/{config.name}_{i_iter}.pth')
 
 
 def load_model(config):
-    return torch.load(f'saved_models/{config.modality}/{config.naming_str}_{config.load_iter}.pth')
+    if config.method == 'RD':
+        load_dec = torch.load(f'saved_models/{config.modality}/{config.name}_dec_{config.load_iter}.pth')
+        load_bn = torch.load(f'saved_models/{config.modality}/{config.name}_bn_{config.load_iter}.pth')
+        return load_dec, load_bn
+    else:
+        return torch.load(f'saved_models/{config.modality}/{config.name}_{config.load_iter}.pth')
 
 
 def set_requires_grad(model, requires_grad: bool) -> None:
@@ -89,7 +129,13 @@ def misc_settings(config):
         logger = wandb.init(project=config.method, name=f'{name}_eval', config=config, reinit=True)
     if config.disable_wandb:
         logger = wandb.init(mode="disabled")
-    return name, logger
+
+    # keep name, logger, step in config to pass them around
+    config.name = name
+    config.logger = logger
+    config.step = 0
+
+    return
 
 
 # initialize SSIM Loss module
@@ -117,10 +163,8 @@ def ssim_map(batch1: Tensor, batch2: Tensor):
     return anomaly_map
 
 
-def metrics(anomaly_maps: list = None, segmentations: list = None,
-            anomaly_scores: list = None, labels: list = None,
-            wandb_logger: wandb.run = None, step: int = None,
-            print_results: bool = True, limited_metrics: bool = True) -> Union[None, float]:
+def metrics(config: Namespace, anomaly_maps: list = None, segmentations: list = None,
+            anomaly_scores: list = None, labels: list = None) -> Union[None, float]:
     """
     Computes evaluation metrics, prints and logs the results.
 
@@ -132,14 +176,10 @@ def metrics(anomaly_maps: list = None, segmentations: list = None,
         segmentations (list): list of segmentation tensor batches of shape [b,c,h,w]
         anomaly_scores (list): list of anomaly score tensors of shape [b, 1]
         labels (list): list of label tensors of shape [b, 1]
-        wandb_logger: wandb logger instance
-        step (int, optional): iteration step, for logging during online evaluation
-        print_results (bool): whether to print the evaluation results
-        limited metrics (bool): limits the eval to specific per-pixel metrics pixel AP, best DICE
     """
 
-    # log_msg = "\nEvaluation results: \n"
     print("\nEvaluation results: \n")
+
     # image-wise metrics
     if labels is not None:
 
@@ -147,34 +187,20 @@ def metrics(anomaly_maps: list = None, segmentations: list = None,
         print(f"sample-wise average precision: {sample_ap:.4f}")
         sample_auroc = compute_auroc(torch.cat(anomaly_scores), torch.cat(labels))
         print(f"sample-wise AUROC: {sample_auroc:.4f}\n")
-        # log_msg += f"sample-wise AUROC: {sample_auroc:.4f} - "
-        # log_msg += f"sample-wise average precision: {sample_ap:.4f}\n"
         best_f1, _ = compute_best_dice(torch.cat(anomaly_scores), torch.cat(labels))
         print(f"Best F1-score for 100 thresholds: {best_f1:.4f}\n")
 
-        if wandb_logger is not None:
-            wandb_logger.log({
-                'anom_val/sample_ap': sample_ap,
-                'anom_val/sample-auroc': sample_auroc,
-                'anom_val/best-F1': best_f1
-            }, step=step)
+        log({'anom_val/sample_ap': sample_ap,
+            'anom_val/sample-auroc': sample_auroc,
+             'anom_val/best-F1': best_f1}, config)
 
     # pixel-wise metrics
     if segmentations is not None:
 
-        if limited_metrics:
+        if config.limited_metrics:
             pixel_ap = compute_average_precision(torch.cat(anomaly_maps), torch.cat(segmentations))
             print(f"pixel-wise average precision: {pixel_ap:.4f}\n")
-            # best_dice, threshold = compute_best_dice(
-            #     torch.cat(anomaly_maps), torch.cat(segmentations))
-            # print(f"Best Dice score for 100 thresholds: {best_dice:.4f}")
-            # log_msg += f"pixel-wise average precision: {pixel_ap:.4f}\n"
-            # log_msg += f"Best Dice score for 100 thresholds: {best_dice:.4f}\n"
-
-            if wandb_logger is not None:
-                wandb_logger.log({
-                    'anom_val/pixel-ap': pixel_ap
-                }, step=step)
+            log({'anom_val/pixel-ap': pixel_ap}, config)
 
         else:
             pixel_ap = compute_average_precision(torch.cat(anomaly_maps), torch.cat(segmentations))
@@ -185,26 +211,37 @@ def metrics(anomaly_maps: list = None, segmentations: list = None,
             print(f"Dice score at 5% FPR: {dice_5fpr:.4f}")
             pixel_auroc = compute_auroc(torch.cat(anomaly_maps), torch.cat(segmentations))
             print(f"pixel-wise AUROC: {pixel_auroc:.4f}\n")
-            # log_msg += f"pixel-wise AUROC: {pixel_auroc:.4f} - "
-            # log_msg += f"pixel-wise average precision: {pixel_ap:.4f}\n"
-            # log_msg += f"Dice score at 5% FPR: {dice_5fpr:.4f} - "
-            # log_msg += f"Best Dice score for 100 thresholds: {best_dice:.4f}\n"
-            if wandb_logger is not None:
-                wandb_logger.log({
-                    'anom_val/pixel-ap': pixel_ap,
-                    'anom_val/pixel-auroc': pixel_auroc,
-                    'anom_val/dice-5fpr': dice_5fpr,
-                    'anom_val/best-dice': best_dice,
 
-                }, step=step)
+            log({'anom_val/pixel-ap': pixel_ap,
+                'anom_val/pixel-auroc': pixel_auroc,
+                 'anom_val/dice-5fpr': dice_5fpr,
+                 'anom_val/best-dice': best_dice},
+                config)
 
-    # if print_results:
-    #     print(log_msg)
-
-    if segmentations is not None and not limited_metrics:
+    if segmentations is not None and not config.limited_metrics:
         return threshold
     else:
         return None
+
+
+def log(dict_to_log, config):
+    """
+    logs to wandb
+    input is dict of values to log
+    checks if value is Tensor Batch (len(shape)> 3) to treat it as image
+    if value is not Tensor, it will treat it as number
+    """
+    for key, value in dict_to_log.items():
+        if isinstance(value, Tensor):
+            if len(value.shape) > 3:
+                list_to_log = list(value[:config.num_images_log].float().cpu())
+                config.logger.log({
+                    key: [wandb.Image(img) for img in list_to_log]
+                }, step=config.step)
+        else:
+            config.logger.log({
+                key: value
+            }, step=config.step)
 
 
 def str_to_bool(value):

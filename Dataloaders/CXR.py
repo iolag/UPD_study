@@ -132,10 +132,7 @@ class NormalDataset(Dataset):
         config should include "image_size"
         """
 
-        if "is_gan" not in config or config.is_gan in [None, False]:
-            self.is_gan = False
-        else:
-            self.is_gan = True
+        self.stadardize = config.stadardize
 
         self.files = files
 
@@ -147,7 +144,7 @@ class NormalDataset(Dataset):
 
         mean = 0.5364
         std = 0.2816
-        self.stadardize = T.Normalize(mean, std)
+        self.norm = T.Normalize(mean, std)
 
     def __len__(self):
         return len(self.files)
@@ -163,8 +160,8 @@ class NormalDataset(Dataset):
         image = Image.open(self.files[idx])
         image = self.transforms(image)
 
-        if not self.is_gan:
-            image = self.stadardize(image)
+        if self.stadardize:
+            image = self.norm(image)
 
         return image
 
@@ -190,10 +187,7 @@ class AnomalDataset(Dataset):
         config should include "image_size"
         """
 
-        if "is_gan" not in config or config.is_gan in [None, False]:
-            self.is_gan = False
-        else:
-            self.is_gan = True
+        self.stadardize = config.stadardize
 
         self.images = normal_paths + anomal_paths
         self.labels = labels_normal + labels_anomal
@@ -207,7 +201,7 @@ class AnomalDataset(Dataset):
 
         mean = 0.5364
         std = 0.2816
-        self.stadardize = T.Normalize(mean, std)
+        self.norm = T.Normalize(mean, std)
 
     def __len__(self):
         return len(self.images)
@@ -224,8 +218,8 @@ class AnomalDataset(Dataset):
         # for compatibility, create image like pixel masks to provide as labels
         mask = torch.zeros_like(image)
 
-        if not self.is_gan:
-            image = self.stadardize(image)
+        if self.stadardize:
+            image = self.norm(image)
 
         if self.labels[idx] != 0:
             mask = torch.eye(image.shape[-1]).unsqueeze(0)

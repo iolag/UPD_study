@@ -4,6 +4,8 @@ from torch.utils.data import Dataset
 # from torchvision import transforms as T
 import numpy as np
 from torch.utils.data import DataLoader
+import sys
+sys.path.append('/u/home/lagi/thesis')
 from DatasetPreprocessing.mylungCT import get_munich_preproc_splits
 from Utilities.utils import GenericDataloader
 from torch import Tensor

@@ -1,20 +1,15 @@
 import sys
-import os
 sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
-from torch import nn
 import torch
-from Utilities.utils import metrics
-import wandb
-os.environ["WANDB_SILENT"] = "true"
+from Utilities.utils import metrics, log
 from argparse import Namespace
 from torch.utils.data import DataLoader
 from Utilities.normFPR import dice_f1_normal_nfpr
 from tqdm import tqdm
 
 
-def evaluate(model: nn.Module, test_loader: DataLoader,
-             i_iter: int, val_step: object, logger: wandb.run,
-             config: Namespace, val_loader: DataLoader = None) -> None:
+def evaluate(config: Namespace, test_loader: DataLoader,
+             val_step: object, val_loader: DataLoader = None) -> None:
     """
     because we work we datasets of both with and without masks, code is structured in a
     way that no mask dataloaders also return masks. For healthy samples they return empty
@@ -28,6 +23,7 @@ def evaluate(model: nn.Module, test_loader: DataLoader,
 
     # forward pass the testloader to extract anomaly maps, scores, masks, labels
     for input, mask in tqdm(test_loader, desc="Test set"):
+
         if config.patches:
             # input.shape = [samples,crops,c,h,w]
             # mask.shape = [samples,crops,1,h,w]
@@ -36,7 +32,7 @@ def evaluate(model: nn.Module, test_loader: DataLoader,
             #  print(input.shape)
             # mask = mask.reshape(mask.shape[0] * mask.shape[1], *mask.shape[2:])# [samples*crops,1,h,w]
             # print(mask.shape)
-            x = val_step(model, input.to(config.device), return_loss=False)
+            x = val_step(input.to(config.device), return_loss=False)
             # print(x[1])
             per_crop_scores = x[1].view(b, config.num_patches)  # [samples,crops]
             # print(per_crop_scores.shape)
@@ -65,7 +61,7 @@ def evaluate(model: nn.Module, test_loader: DataLoader,
                     segmentations.append(mask)
         else:
             # forward pass, x = [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
-            x = val_step(model, input.to(config.device), return_loss=False)
+            x = val_step(input.to(config.device), return_loss=False)
 
             anomaly_maps.append(x[0].cpu())
             anomaly_scores.append(x[1].cpu())
@@ -78,28 +74,27 @@ def evaluate(model: nn.Module, test_loader: DataLoader,
     if config.modality in ['CXR', 'OCT'] or (config.dataset != 'IDRID' and config.modality == 'RF'):
         segmentations = None  # disables pixel level evaluation in metrics()
 
-    threshold = metrics(anomaly_maps, segmentations, anomaly_scores,
-                        labels, logger, i_iter, config.limited_metrics)
+    threshold = metrics(config, anomaly_maps, segmentations, anomaly_scores, labels)
 
     if config.normal_fpr:
         config.nfpr = 0.05
-        dice_f1_normal_nfpr(model, val_loader, config, logger, i_iter, val_step,
+        dice_f1_normal_nfpr(val_loader, config, val_step,
                             anomaly_maps, segmentations, anomaly_scores, labels)
         config.nfpr = 0.1
-        dice_f1_normal_nfpr(model, val_loader, config, logger, i_iter, val_step,
-                            anomaly_maps, segmentations, anomaly_scores, labels)
+        dice_f1_normal_nfpr(val_loader, config, val_step, anomaly_maps,
+                            segmentations, anomaly_scores, labels)
 
     # if config.patches:
     #     return
 
     # do a single forward pass to extract stuff to log
     # the batch size is num_images_log for test_loaders, so a single forward pass is enough
-
     input, mask = next(iter(test_loader))
+
     if config.patches:
         input = input.view(input.shape[0] * input.shape[1], *input.shape[2:])
     # forward pass, x = [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
-    x = val_step(model, input.to(config.device), return_loss=False)
+    x = val_step(input.to(config.device), return_loss=False)
 
     if config.patches:
         input = input.view(4, config.img_channels, config.image_size * int(math.sqrt(config.num_patches)),
@@ -110,36 +105,32 @@ def evaluate(model: nn.Module, test_loader: DataLoader,
         mask = mask.squeeze(1)
 
     else:
-        map = x[0]
+        maps = x[0]
 
-    # Log images to wandb
-    input_images = list(input[:config.num_images_log].cpu())
-    targets = list(mask.float()[:config.num_images_log].cpu())
+    log({'anom_val/input images': input,
+         'anom_val/targets': mask,
+         'anom_val/anomaly maps': maps}, config)
+    # # Log images to wandb
+    # input_images = list(input[:config.num_images_log].cpu())
+    # targets = list(mask.float()[:config.num_images_log].cpu())
 
-    anomaly_images = list(map[:config.num_images_log].cpu())
-    logger.log({
-        'anom_val/input images': [wandb.Image(img) for img in input_images],
-        'anom_val/targets': [wandb.Image(img) for img in targets],
-        'anom_val/anomaly maps': [wandb.Image(img) for img in anomaly_images]
-    }, step=i_iter)
+    # anomaly_images = list(maps[:config.num_images_log].cpu())
+    # config.logger.log({
+    #     'anom_val/input images': [wandb.Image(img) for img in input_images],
+    #     'anom_val/targets': [wandb.Image(img) for img in targets],
+    #     'anom_val/anomaly maps': [wandb.Image(img) for img in anomaly_images]
+    # }, step=config.step)
 
     # if recon based method, len(x)==3 because val_step returns reconstructions.
     # if thats the case  log the reconstructions
     if len(x) == 3:
-        input_reconstructions = list(x[2][:config.num_images_log].cpu())
-        logger.log({
-            'anom_val/reconstructions': [wandb.Image(img) for img in input_reconstructions],
-        }, step=i_iter)
 
+        log({'anom_val/reconstructions': x[2]}, config)
     # produce thresholded images
-    if not config.limited_metrics:
+    if not config.limited_metrics and segmentations is not None:
         # create thresholded images on the threshold of best posible dice score on the dataset
-        anomaly_thresh_map = x[0][:config.num_images_log]
-        anomaly_thresh_map = torch.where(anomaly_thresh_map < threshold,
+        anomaly_thresh_map = torch.where(x[0] < threshold,
                                          torch.FloatTensor([0.]).to(config.device),
                                          torch.FloatTensor([1.]).to(config.device))
-        anomaly_thresh = list(anomaly_thresh_map.cpu())
 
-        logger.log({
-            'anom_val/thresholded maps': [wandb.Image(img) for img in anomaly_thresh],
-        }, step=i_iter)
+        log({'anom_val/thresholded maps': anomaly_thresh_map}, config)

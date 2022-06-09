@@ -1,29 +1,26 @@
-import os
 import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms as T
-from augmentations import Rotation, Cutout1  # , Cutout, Gaussian_noise,  CutPerm
+from augmentations import CutPerm, Cutout1  # , Cutout, Gaussian_noise,  CutPerm
 import torchvision.transforms as transforms
-from argparse import Namespace
-from glob import glob
 from Dataloaders.CXR import get_files
 
 
 class CCD_Dataset(Dataset):
     def __init__(self, config, transform=None):
         self.transform = transform
-        strong_aug = Rotation()
+        strong_aug = CutPerm()
         self.data = []
 
         self.imgs = np.asarray(get_files(config))
 
         # image will be resized later to config.image_size with RandomResizedCrop
-        img_size = int(config.image_size * 0.875)
+        img_size = int(config.image_size // 0.875)
 
         self.initial_transform = T.Compose([
-            T.Resize((img_size, img_size), T.InterpolationMode.LANCZOS),
+            T.Resize((img_size), T.InterpolationMode.LANCZOS),
             T.CenterCrop(img_size),
             T.ToTensor(),
         ])
@@ -112,8 +109,6 @@ def get_train_dataloader(config):
         transforms.RandomHorizontalFlip(),
         transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
         transforms.RandomGrayscale(0.2),
-        # transforms.ToTensor(),
-        # transforms.Normalize(**p['augmentation_kwargs']['normalize']),
         Cutout1(n_holes=1, length=75, random=True)
     ])
 

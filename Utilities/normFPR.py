@@ -1,14 +1,14 @@
 from Utilities.metrics import compute_dice
-from torch import nn
+from Utilities.utils import log
+
 from torch.utils.data import DataLoader
 import torch
 import numpy as np
 from argparse import Namespace
-import wandb
 
 
-def dice_f1_normal_nfpr(model: nn.Module, val_loader: DataLoader,
-                        config: Namespace, logger: wandb.run, i_iter: int, val_step: object = None,
+def dice_f1_normal_nfpr(val_loader: DataLoader,
+                        config: Namespace, val_step: object = None,
                         anomaly_maps: list = None, segmentations: list = None,
                         anomaly_scores: list = None, labels: list = None,
                         normal_residuals: list = None, normal_scores: list = None) -> None:
@@ -19,50 +19,25 @@ def dice_f1_normal_nfpr(model: nn.Module, val_loader: DataLoader,
 
         for input in val_loader:
             input = input.to(config.device)
-            # x = [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
-            x = val_step(model, input, return_loss=False)
+            # x : [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
+            x = val_step(input, return_loss=False)
             normal_residuals.append(x[0].cpu())
             normal_scores.append(x[1].cpu())
 
     if config.dice_normal and segmentations is not None:
+
         thresh = threshold_normal_nfpr(torch.cat(normal_residuals), config.nfpr)
         dice_nfpr = compute_dice(torch.where(torch.cat(anomaly_maps) >
                                  thresh, 1, 0), torch.cat(segmentations))
         print(f"Dice at {config.nfpr * 100}% fpr on normal samples: {dice_nfpr:.4f}")
-        logger.log({
-            f'anom_val/dice-norm-{config.nfpr * 100}_fpr': dice_nfpr
-        }, step=i_iter)
+        log({f'anom_val/dice-norm-{config.nfpr * 100}_fpr': dice_nfpr}, config)
 
     if config.f1_normal:
+
         thresh = threshold_normal_nfpr(torch.cat(normal_scores), config.nfpr)
         dice_nfpr = compute_dice(torch.where(torch.cat(anomaly_scores) > thresh, 1, 0), torch.cat(labels))
         print(f"F1-score at {config.nfpr * 100}% fpr on normal samples: {dice_nfpr:.4f}")
-        logger.log({
-            f'anom_val/F1-norm-{config.nfpr * 100}_fpr': dice_nfpr
-        }, step=i_iter)
-
-
-def dice_normal_nfpr(model: nn.Module, val_loader: DataLoader,
-                     val_step: object, config: Namespace,
-                     logger: wandb.run, i_iter: int,
-                     anomaly_maps: list, segmentations: list) -> None:
-
-    normal_residuals = []
-
-    for input in val_loader:
-        input = input.to(config.device)
-        # x = [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
-        x = val_step(model, input, return_loss=False)
-        normal_residuals.append(x[0].cpu())
-
-    thresh = threshold_normal_nfpr(torch.cat(normal_residuals), config.nfpr)
-    dice_nfpr = compute_dice(torch.where(torch.cat(anomaly_maps) > thresh, 1, 0), torch.cat(segmentations))
-    print(f"Dice at {config.nfpr * 100}% fpr on normal samples: {dice_nfpr:.4f}")
-    logger.log({
-        f'anom_val/dice-norm-{config.nfpr * 100}_fpr': dice_nfpr
-    }, step=i_iter)
-
-    return
+        log({f'anom_val/F1-norm-{config.nfpr * 100}_fpr': dice_nfpr}, config)
 
 
 def threshold_normal_nfpr(normal_residuals, fprate):

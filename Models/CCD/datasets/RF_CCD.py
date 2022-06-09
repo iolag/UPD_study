@@ -1,20 +1,17 @@
-import os
 import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms as T
-from augmentations import Rotation, Cutout1, Cutout, Gaussian_noise, CutPerm
+from augmentations import Rotation, Cutout1  # , Cutout, Gaussian_noise,  CutPerm
 import torchvision.transforms as transforms
+from Dataloaders.RF import get_files
 
 
 class CCD_Dataset(Dataset):
     def __init__(self, config, transform=None):
         self.transform = transform
-
-        self.img_folder_path = None
-
-        strong_aug = CutPerm()
+        strong_aug = Rotation()
         self.data = []
 
         self.imgs = np.asarray(get_files(config))
@@ -23,15 +20,24 @@ class CCD_Dataset(Dataset):
         img_size = int(config.image_size // 0.875)
 
         self.initial_transform = T.Compose([
-            T.Resize((img_size, img_size), T.InterpolationMode.LANCZOS),
-
-            hide_blue_box(img_size),
+            T.Resize((img_size), T.InterpolationMode.LANCZOS),
+            T.CenterCrop(img_size),
             T.ToTensor(),
         ])
+        if config.dataset in ['KAGGLE', 'IDRID']:
+            mean = np.array([0.4662, 0.3328, 0.2552])
+            std = np.array([0.2841, 0.2092, 0.1733])
+        else:
+            mean = np.array([0.5013, 0.3156, 0.2091])
+            std = np.array([0.2052, 0.1535, 0.1185])
+
+        self.norm = T.Normalize(mean, std)
 
         for index in range(len(self.imgs)):
             img = Image.open(self.imgs[index])
             img = self.initial_transform(img)
+            if config.stadardize:
+                img = self.norm(img)
             self.data.append(img)
 
         self.data = torch.stack(self.data)
@@ -48,6 +54,7 @@ class CCD_Dataset(Dataset):
             tmp = self.data[i].unsqueeze(0)
             images = torch.cat([strong_aug(tmp, k)
                                for k in range(self.num_of_strong_aug_classes)])  # [4,c,h,w]
+
             # shift_labels = [0., 1., 2., 3.]
             shift_labels = np.asarray([1. * k for k in range(self.num_of_strong_aug_classes)])
 
@@ -56,6 +63,7 @@ class CCD_Dataset(Dataset):
 
         self.data = torch.cat(self.augdata, axis=0)  # [samples*4,c,h,w]
 
+        # self.data = self.data.transpose((0, 2, 3, 1))
         self.labels = np.concatenate(self.labels, axis=0)
 
     def __getitem__(self, idx):
@@ -65,6 +73,7 @@ class CCD_Dataset(Dataset):
         label = torch.as_tensor(label).long()
         if img.shape[0] == 1:
             img = img.repeat(3, 1, 1)
+
         if self.transform is not None:
             img = self.transform(img)
 
@@ -110,8 +119,6 @@ def get_train_dataloader(config):
         transforms.RandomHorizontalFlip(),
         transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
         transforms.RandomGrayscale(0.2),
-        # transforms.ToTensor(),
-        # transforms.Normalize(**p['augmentation_kwargs']['normalize']),
         Cutout1(n_holes=1, length=75, random=True)
     ])
 
@@ -125,45 +132,3 @@ def get_train_dataloader(config):
                                        pin_memory=True,
                                        drop_last=True,
                                        shuffle=True)
-
-
-class hide_blue_box(torch.nn.Module):
-
-    """
-    Crop the bluebox appearing in most Colonoscopy images.
-    Return cropped img.
-
-    The indexes to hide the blue boxes are a rough estimate
-    after img inspection.
-    """
-
-    def __init__(self, image_size):
-        super().__init__()
-        self.image_size = image_size
-        self.h_idx = 166 * image_size // 256
-        self.w_idx = 90 * image_size // 256
-
-    def forward(self, img):
-
-        mask = np.ones((self.image_size, self.image_size, 3))
-        # self.h_idx
-        mask[self.h_idx:, 0: self.w_idx, :] = 0
-        cropped_image = Image.fromarray(np.uint8(np.asarray(img) * mask))
-
-        return cropped_image
-
-
-def get_files(config, train: bool = True):
-
-    pathfile = open(os.path.join(config.datasets_dir,
-                                 'Colonoscopy',
-                                 'labeled-images',
-                                 'lower-gi-tract',
-                                 'normal_image_paths.csv'))
-
-    paths = pathfile.read().splitlines()
-
-    for idx, path in enumerate(paths):
-        paths[idx] = os.path.join(config.datasets_dir, path)
-
-    return paths[300:]

@@ -19,7 +19,7 @@ def build_encoder(config) -> nn.Module:
 
     hidden_dims = [config.width * 2 ** i for i in range(config.num_layers)]
     encoder = []
-    in_channels = config.img_channels
+    in_channels = 3
 
     # Consecutive strided conv layers to downsample
     for h_dim in hidden_dims:
@@ -162,12 +162,18 @@ class VAE(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         # https://doi.org/10.1145/1390156.1390294 Denoising Autoencoders
         x = self.dropout(x)
+
+        # Grayscale case, required because CCD needs RGB input
+        if x.shape[1] == 1:
+            x = x.repeat(1, 3, 1, 1)
         # Encode
         res = self.encoder(x)
         # Bottleneck
         mu, logvar = torch.chunk(self.bottleneck(res), 2, dim=1)
         # Reparametrize
         z = self.reparameterize(mu, logvar)
+        # Decode
         decoder_inp = self.decoder_input(z)
         y = self.decoder(decoder_inp)
+
         return y, mu, logvar

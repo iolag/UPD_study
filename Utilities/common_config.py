@@ -4,6 +4,7 @@ from Utilities.utils import str_to_bool
 
 
 def common_config(parser):
+    parser.add_argument('--small-is-big', '-sib', type=str_to_bool, default=False, help='')
     parser.add_argument('--patches', type=str_to_bool, default=False, help='')
     parser.add_argument('--num_patches', '-np', type=int, default=9,
                         help='', choices=[1, 4, 9, 16, 25])
@@ -18,7 +19,7 @@ def common_config(parser):
 
     # General script settings
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
-    parser.add_argument('--load_pretrained', type=str_to_bool, default=False,
+    parser.add_argument('--load_pretrained', '-lp', type=str_to_bool, default=False,
                         help='Load encoder pretrained with CCD')
     parser.add_argument('--disable_wandb', '-dw', type=str_to_bool,
                         default=False, help='disable wandb logging')
@@ -32,7 +33,7 @@ def common_config(parser):
                         default='/datasets/Datasets/', help='datasets_dir')
     parser.add_argument('--image_size', type=int, default=128, help='Image size')
     parser.add_argument('--img_channels', type=int, default=1, help='Image channels')
-    parser.add_argument('--stadardize', type=str_to_bool, default=False,
+    parser.add_argument('--stadardize', '-stad', type=str_to_bool, default=False,
                         help='Whether to standardize the samples to N(0,1) dataset-wise.')
     parser.add_argument('--modality', '-mod', type=str, default='MRI', help='MRI sequence')
     parser.add_argument('--normal_split', '-ns', type=float, default=0.95, help='normal set split')
@@ -64,8 +65,8 @@ def common_config(parser):
 
     # Logging settings
     parser.add_argument('--name_add', '-nam', type=str, default='', help='option to add to the wandb name')
-    parser.add_argument('--log_frequency', '-lf', type=int, default=100, help='logging frequency')
-    parser.add_argument('--val_frequency', '-vf', type=int, default=400, help='validation frequency')
+    parser.add_argument('--log_frequency', '-lf', type=int, default=200, help='logging frequency')
+    parser.add_argument('--val_frequency', '-vf', type=int, default=1000, help='validation frequency')
     parser.add_argument('--anom_val_frequency', '-avf', type=int, default=1000,
                         help='Validation frequency on anomalous samples')
     parser.add_argument('--val_steps', type=int, default=50, help='validation steps')
@@ -76,7 +77,7 @@ def common_config(parser):
                         help='SSIM for reconstruction residual')
 
     # Save, Load, Train part settings
-    parser.add_argument('--save_frequency', type=int, default=5000, help='model save/checkpoint frequency')
+    parser.add_argument('--save_frequency', type=int, default=100000, help='model save/checkpoint frequency')
     # parser.add_argument('--load_saved', type=str_to_bool, default=False, help='load a saved model')
     parser.add_argument('--load_iter', type=str, default="", help='iteration/checkpoint of model to load')
 

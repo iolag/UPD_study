@@ -34,7 +34,7 @@ def get_config():
     parser.add_argument('--feat_weight', type=float, default=1.,
                         help='Feature reconstruction weight during encoder training')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='Weight decay')
-    parser.add_argument('--max_steps_gan', type=int, default=50000, help='Number of training steps')
+    parser.add_argument('--max_steps_gan', type=int, default=30000, help='Number of training steps')
     parser.add_argument('--max_steps_encoder', type=int, default=20000, help='Number of training steps')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
 
@@ -62,20 +62,14 @@ config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # get logger and naming string
 config.method = 'f-anoGAN'
-naming_str, logger = misc_settings(config)
+misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
 
 # specific seed for deterministic dataloader creation
 seed_everything(42)
 
-if config.eval:
-    config.batch_size = 100
-
-if not config.eval:
-    train_loader, val_loader, big_testloader, small_testloader = load_data(config)
-else:
-    big_testloader, small_testloader = load_data(config)
+train_loader, val_loader, big_testloader, small_testloader = load_data(config)
 
 
 """"""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
@@ -97,6 +91,10 @@ if config.eval:
     model.D.load_state_dict(torch.load(f'saved_models/{config.modality}/{naming_str}_netD.pth'))
     model.E.load_state_dict(torch.load(f'saved_models/{config.modality}/{naming_str}_netE.pth'))
     print('Saved model loaded.')
+
+if config.load_pretrained and not config.eval:
+    config.arch = 'vae'
+    model = load_pretrained(model, config)
 
 """"""""""""""""""""""""""""""""" GAN Training """""""""""""""""""""""""""""""""
 

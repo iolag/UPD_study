@@ -1,3 +1,6 @@
+
+import sys
+sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
 import argparse
 import torch
 import numpy as np
@@ -7,7 +10,9 @@ from losses import SimCLRLoss
 from collections import defaultdict
 from time import time
 from Utilities.common_config import common_config
-from Utilities.utils import (save_model, seed_everything, misc_settings, str_to_bool)
+from Utilities.utils import (save_model, seed_everything,
+                             misc_settings, str_to_bool,
+                             log)
 
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
@@ -17,15 +22,15 @@ def get_config():
     parser = argparse.ArgumentParser()
     parser = common_config(parser)
 
-    parser.add_argument('--only_simclr', type=int, default=128, help='Train only with the SimClr task')
+    parser.add_argument('--only-simclr', type=str_to_bool, default=False,
+                        help='Train only with the SimClr task')
     parser.add_argument('--backbone-arch', type=str, default='wide_resnet50_2', help='Backbone architecture.',
                         choices=['resnet18', 'resnet50', 'wide_resnet50_2', 'vae', 'fanogan', 'vgg19'])
     parser.add_argument('--cls-head-number', default=2, type=int)
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--max-epochs', type=int, default=200, help='Number of training epochs')
     parser.add_argument('--max-steps', type=int, default=20000, help='Number of training steps')
-    parser.add_argument('--save-checkpoint', type=int, default=2000, help='Checkpoint save frequency')
-    parser.add_argument('--log-frequency', default=200, type=int)
+    parser.add_argument('--save-checkpoint', type=int, default=100000, help='Checkpoint save frequency')
 
     # VAE Hyperparameters
     parser.add_argument('--latent_dim', type=int, default=512, help='Model width')
@@ -46,12 +51,38 @@ def get_config():
 
 config = get_config()
 
+# Specific modality params (Default above are for MRI t2)
+if config.modality == 'CXR':
+    config.kl_weight = 0.0001
+    config.num_layers = 6
+    config.latent_dim = 256
+    config.width = 16
+    config.conv1x1 = 64
+    config.stadardize = True
+
+if config.modality == 'COL':
+    config.kl_weight = 0.0001
+    config.num_layers = 6
+    config.latent_dim = 256
+    config.width = 16
+    config.conv1x1 = 64
+    config.stadardize = True
+
+if config.modality == 'MRI' and config.sequence == 't1':
+    config.kl_weight = 0.0001
+    config.num_layers = 6
+    config.latent_dim = 512
+    config.width = 32
+    config.conv1x1 = 64
+
 if config.backbone_arch == 'fanogan':
     config.latent_dim = 128
 
-# get logger and naming string
+if config.backbone_arch in ['vgg19', 'fanogan']:
+    config.lr = 0.001
+
 config.method = 'CCD'
-config.naming_str, _ = misc_settings(config)
+misc_settings(config)
 
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
@@ -64,8 +95,8 @@ elif config.modality == 'MRI':
     from Models.CCD.datasets.MRI_CCD import get_train_dataloader
 elif config.modality == 'CXR':
     from Models.CCD.datasets.CXR_CCD import get_train_dataloader
-elif config.modality == 'CXR':
-    from Models.CCD.datasets.CXR_CCD import get_train_dataloader
+elif config.modality == 'RF':
+    from Models.CCD.datasets.RF_CCD import get_train_dataloader
 
 train_dataloader = get_train_dataloader(config)
 
@@ -76,6 +107,11 @@ seed_everything(config.seed)
 # Init model
 print("Initializing model...")
 model = ContrastiveModel(config, features_dim=128).to(config.device)
+
+if config.backbone_arch == 'vae':
+    model.backbone['encoder'] = model.backbone['encoder'].to(config.device)
+    model.backbone['bottleneck'] = model.backbone['bottleneck'].to(config.device)
+
 
 # Loss, Optimizer
 criterion = SimCLRLoss(temperature=0.2)
@@ -96,7 +132,6 @@ def adjust_lr(lr, optimizer, epoch, max_epochs):
 def train():
     # Training
     start_epoch = 0
-    i_iter = 0
     lr = config.lr
     train_losses = defaultdict(list)
     t_start = time()
@@ -109,7 +144,7 @@ def train():
 
         for i, batch in enumerate(train_dataloader):
 
-            i_iter += 1
+            config.step += 1
             loss_dict = train_step(batch)
 
             # Accumulate losses
@@ -117,27 +152,30 @@ def train():
                 train_losses[k].append(v.item())
 
             # Log losses
-            if i_iter % config.log_frequency == 0:
+            if config.step % config.log_frequency == 0:
                 # Print training loss
                 log_msg = " - ".join([f'{k}: {np.mean(v):.4f}' for k,
                                       v in train_losses.items()])
-                log_msg = f"Iteration {i_iter} - Epoch {epoch} - " + log_msg
+                log_msg = f"Iteration {config.step} - Epoch {epoch} - " + log_msg
                 log_msg += f" - time: {time() - t_start:.2f}s"
                 log_msg += f" - learning rate: {lr:6f}"
                 print(log_msg)
 
+                # log losses
+                log({f'val/{k}': np.mean(v) for k, v in train_losses.items()}, config)
+
                 # Reset loss dict
                 train_losses = defaultdict(list)
 
-            if i_iter % config.save_checkpoint == 0:
-                save_model(model.backbone, config)
+            if config.step % config.save_checkpoint == 0:
+                save_model(model.backbone, config, config.step)
 
-            if i_iter % config.max_steps == 0:
+            if config.step % config.max_steps == 0:
                 print(f'Reached {config.max_steps} iterations. Finished pre-training with CCD.')
                 save_model(model.backbone, config)
                 return
 
-    print(f'Reached { config.max_epochs} epochs. Finished pre-training with CCD.')
+    print(f'Reached {config.max_epochs} epochs. Finished pre-training with CCD.')
     save_model(model.backbone, config)
 
 

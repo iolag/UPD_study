@@ -1,6 +1,5 @@
 """
-Authors: Wouter Van Gansbeke, Simon Vandenhende
-Licensed under the CC BY-NC 4.0 license (https://creativecommons.org/licenses/by-nc/4.0/)
+adapted from: ccd
 """
 import torch
 import torch.nn as nn
@@ -8,50 +7,49 @@ import torch.nn.functional as F
 import math
 import torchvision.models as models
 import sys
-sys.path.append('/home/ioannis/lagi/thesis/')
+sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
 from Models.VAE.VAEmodel import VAE
 from Models.fanogan.GANmodel import Encoder
 
 
 def backbone_architecture(config):
     if 'resnet' in config.backbone_arch:
+
         if config.backbone_arch == 'resnet18':
             backbone = models.resnet18(pretrained=True, progress=True)
+            backbone.fc = nn.Identity()
+
+            return {'backbone': backbone, 'dim': 512}
+
         elif config.backbone_arch == 'resnet50':
             backbone = models.resnet50(pretrained=True, progress=True)
-            backup = backbone.conv1
-            backbone.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3, bias=False).cuda()
-            backbone.conv1.load_state_dict(backup.state_dict())
             backbone.fc = nn.Identity()
+
             return {'backbone': backbone, 'dim': 2048}
+
         elif config.backbone_arch == 'wide_resnet50_2':
             backbone = models.wide_resnet50_2(pretrained=True, progress=True)
-            backup = backbone.conv1
-            backbone.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3, bias=False).cuda()
-            backbone.conv1.load_state_dict(backup.state_dict())
-            backbone.fc = nn.Identity()
-            return {'backbone': backbone, 'dim': 2048}
-        backbone.fc = nn.Identity()
-        return {'backbone': backbone, 'dim': 512}
+            # backbone.conv1.stride = 1
 
-    elif 'vgg19' == config.backbone_arch:  # doesn't work
+            backbone.fc = nn.Identity()
+
+            return {'backbone': backbone, 'dim': 2048}
+
+    elif 'vgg19' == config.backbone_arch:
         backbone = models.vgg19(pretrained=True, progress=True)
-        #backbone.classifier = nn.Identity()
         return {'backbone': backbone, 'dim': 1000}
 
     elif 'vae' == config.backbone_arch:
         model = VAE(config)
         encoder = model.encoder
         bottleneck = model.bottleneck
-        # note: nn.Sequential(unpack(list(iterator)+list(iterator)))
-        backbone = nn.Sequential(*(list(encoder.children()) + list(bottleneck.children())))
+        backbone = {'encoder': encoder, 'bottleneck': bottleneck}
         return {'backbone': backbone, 'dim': config.latent_dim * 2}
 
     elif 'fanogan' == config.backbone_arch:
         model = Encoder(config)
         backbone = model
         backbone.fc = nn.Linear(4 * 4 * 8 * 64, 1024)
-        # print(backbone)
         return {'backbone': backbone, 'dim': 1024}
 
 
@@ -93,6 +91,13 @@ class ContrastiveModel(nn.Module):
 
         backbone = backbone_architecture(config)
         self.backbone = backbone['backbone']
+
+        # different handling for vae for practical purposes (saving)
+        if config.backbone_arch == 'vae':
+            self.is_vae = True
+        else:
+            self.is_vae = False
+
         self.backbone_dim = backbone['dim']
         self.class_num = 4  # num of strong aug versions
         self.cls_head_number = config.cls_head_number
@@ -112,12 +117,12 @@ class ContrastiveModel(nn.Module):
             self.classification_head = nn.Sequential(
                 NormalizedLinear(self.backbone_dim, self.class_num))
 
-    # MLP 512->128 OF features and logits parts are different mlps, I would figure should be the same
-
     def forward(self, x):
-
-        out = self.backbone(x)
-
+        if self.is_vae:
+            out = self.backbone['encoder'](x)
+            out = self.backbone['bottleneck'](out)
+        else:
+            out = self.backbone(x)
         features = self.contrastive_head(out)
         features = F.normalize(features, dim=1)
         logits = self.classification_head(out)

@@ -97,6 +97,7 @@ def add_noise(input):
     Generate and apply randomly translated noise to batch x
     """
 
+    # to apply it in for rgb maybe not take diff noise for each channel? (input.shape[1] should be 1)
     ns = torch.normal(mean=torch.zeros(input.shape[0], input.shape[1], config.noise_res, config.noise_res),
                       std=config.noise_std).to(config.device)
 

@@ -21,3 +21,6 @@ random/
 pretrained_models/
 saved_statistics/
 saved_statistics/
+notebook.ipynb
+cflow-ad/
+DatasetPreprocessing/

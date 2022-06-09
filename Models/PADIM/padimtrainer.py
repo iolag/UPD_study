@@ -11,11 +11,13 @@ from scipy.spatial.distance import mahalanobis
 from scipy.ndimage import gaussian_filter
 import torch
 import torch.nn.functional as F
-from torchvision.models import wide_resnet50_2, resnet18
+# from torchvision.models import wide_resnet50_2, resnet18
+from resnet import wide_resnet50_2, resnet18
 from Utilities.utils import seed_everything, metrics, load_data, load_pretrained, misc_settings
 from Utilities.common_config import common_config
 import wandb
 os.environ["WANDB_SILENT"] = "true"
+from Utilities.normFPR import dice_f1_normal_nfpr
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
@@ -35,12 +37,15 @@ config = get_config()
 # get naming string
 config.method = 'PADIM'
 config.disable_wandb = True
-naming_str, _ = misc_settings(config)
+misc_settings(config)
 
 if config.eval:
-    logger = wandb.init(project='PADIM', name=naming_str, config=config, reinit=True)
+    logger = wandb.init(project='PADIM', name=config.name, config=config, reinit=True)
+    config.logger = logger
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
+if config.modality == 'MRI' and not config.eval:
+    config.normal_split = 0.2
 
 # specific seed for deterministic dataloader creation
 seed_everything(42)
@@ -55,13 +60,13 @@ seed_everything(config.seed)
 print("Initializing Model...")
 
 if config.arch == 'resnet18':
-    model = resnet18(pretrained=True, progress=True)
+    model = resnet18(pretrained=True)
     t_d = 448  # total channel dims of extracted embed. volume
     d = 100  # number of channels to subsample to
 
 
 elif config.arch == 'wide_resnet50_2':
-    model = wide_resnet50_2(pretrained=True, progress=True)
+    model = wide_resnet50_2(pretrained=True)
     t_d = 1792  # 256 512 1024
     d = 550
 
@@ -141,7 +146,7 @@ def train():
 
     # save learned distribution
     train_outputs = [mean, cov]
-    with open(f'saved_models/{config.modality}/{config.arch}_{naming_str}.pkl', 'wb') as f:
+    with open(f'saved_models/{config.modality}/{config.arch}_{config.name}.pkl', 'wb') as f:
         pickle.dump(train_outputs, f)
 
     a.remove()
@@ -165,7 +170,7 @@ def test(dataloader, normal_test: bool = False):
     c = model.layer3.register_forward_hook(hook)
 
     # load saved statistics
-    with open(f'saved_models/{config.modality}/{config.arch}_{naming_str}.pkl', 'rb') as f:
+    with open(f'saved_models/{config.modality}/{config.arch}_{config.name}.pkl', 'rb') as f:
         train_outputs = pickle.load(f)
 
     labels = []
@@ -260,42 +265,52 @@ def test(dataloader, normal_test: bool = False):
     s, h, w = anomaly_maps.shape
     anomaly_maps = anomaly_maps.reshape(s, 1, 1, h, w)
     anomaly_maps = [map for map in anomaly_maps]
-    inputs = torch.cat(inputs)  # tensor of shape num_samples,1,h,w
-    inputs = inputs.reshape(s, 1, 1, h, w)
+    inputs = torch.cat(inputs)  # tensor of shape num_samples,c,h,w
+    if config.modality in ['RF', 'COL']:  # RGB case
+        inputs = inputs.reshape(s, 1, 3, h, w)
+    else:
+        inputs = inputs.reshape(s, 1, 1, h, w)
     inputs = [inp for inp in inputs]
     #
 
-    # apply brainmask for MRI
+    # apply brainmask for MRI, RF
     if config.modality == 'MRI':
         masks = [inp > inp.min() for inp in inputs]
         anomaly_maps = [map * mask for map, mask in zip(anomaly_maps, masks)]
         anomaly_scores = [torch.Tensor([map[inp > inp.min()].mean()
                                        for map, inp in zip(anomaly_maps, inputs)])]
+    elif config.modality in ['RF']:
+        masks = [inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in inputs]
+        anomaly_maps = [map * mask for map, mask in zip(anomaly_maps, masks)]
+        anomaly_scores = [torch.Tensor(
+            [map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
+             for map, inp in zip(anomaly_maps, inputs)])]
     else:
         anomaly_scores = [torch.Tensor([map.mean() for map in anomaly_maps])]
 
     return inputs, segmentations, labels, anomaly_maps, anomaly_scores
 
 
-from Utilities.normFPR import dice_f1_normal_nfpr
-
-
 def evaluation(inputs, segmentations, labels, anomaly_maps, anomaly_scores):
+
+    with open(f'saved_models/{config.modality}/{config.arch}_{config.name}_maps.pkl', 'wb') as f:
+        pickle.dump(anomaly_maps, f)
+    with open(f'saved_models/{config.modality}/{config.arch}_{config.name}_scores.pkl', 'wb') as f:
+        pickle.dump(anomaly_maps, f)
 
     if config.modality in ['CXR', 'OCT'] or (config.dataset != 'IDRID' and config.modality == 'RF'):
         segmentations = None  # disables pixel level evaluation in metrics()
 
-    threshold = metrics(anomaly_maps, segmentations, anomaly_scores,
-                        labels, logger, 0, limited_metrics=False)
+    threshold = metrics(config, anomaly_maps, segmentations, anomaly_scores, labels)
 
     if config.normal_fpr:
         _, _, _, normal_residuals, normal_scores = test(val_loader, normal_test=True)
         config.nfpr = 0.05
-        dice_f1_normal_nfpr(model, val_loader, config, logger, 0, None,
+        dice_f1_normal_nfpr(val_loader, config, None,
                             anomaly_maps, segmentations, anomaly_scores,
                             labels, normal_residuals, normal_scores)
         config.nfpr = 0.1
-        dice_f1_normal_nfpr(model, val_loader, config, logger, 0, None,
+        dice_f1_normal_nfpr(val_loader, config, None,
                             anomaly_maps, segmentations, anomaly_scores,
                             labels, normal_residuals, normal_scores)
 

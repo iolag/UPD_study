@@ -6,7 +6,6 @@ import torch
 from collections import defaultdict
 from VAEmodel import VAE
 from time import time
-import wandb
 from torch import Tensor
 from typing import Tuple
 from Utilities.evaluate import evaluate  # eval_reconstruction_based
@@ -14,7 +13,7 @@ from Utilities.common_config import common_config
 from Utilities.utils import (save_model, seed_everything,
                              load_data, load_pretrained,
                              misc_settings, ssim_map,
-                             load_model)
+                             load_model, log)
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
@@ -26,8 +25,8 @@ def get_config():
     # Training Hyperparameters
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=0, help='Weight decay')
-    parser.add_argument('--max_steps', type=int, default=10000, help='Number of training steps')
-    parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+    parser.add_argument('--max_steps', type=int, default=30000, help='Number of training steps')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
 
     # Model Hyperparameters
     parser.add_argument('--kl_weight', type=float, default=0.001, help='kl weight')
@@ -47,19 +46,41 @@ def get_config():
 
 config = get_config()
 
+# Specific modality params (Default above are for MRI t2)
+if config.modality == 'CXR':
+    config.kl_weight = 0.0001
+    config.num_layers = 6
+    config.latent_dim = 256
+    config.width = 16
+    config.conv1x1 = 64
+    config.stadardize = True
+
+if config.modality == 'COL':
+    config.kl_weight = 0.0001
+    config.num_layers = 6
+    config.latent_dim = 256
+    config.width = 16
+    config.conv1x1 = 64
+    config.stadardize = True
+
+if config.modality == 'MRI' and config.sequence == 't1':
+    config.kl_weight = 0.0001
+    config.num_layers = 6
+    config.latent_dim = 512
+    config.width = 32
+    config.conv1x1 = 64
+
+
 # get logger and naming string
 config.method = 'VAE'
-config.naming_str, logger = misc_settings(config)
+misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
 
 # specific seed for deterministic dataloader creation
 seed_everything(42)
 
-if not config.eval or config.norm_fpr:
-    train_loader, val_loader, big_testloader, small_testloader = load_data(config)
-else:
-    big_testloader, small_testloader = load_data(config)
+train_loader, val_loader, big_testloader, small_testloader = load_data(config)
 
 """"""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
 # Reproducibility
@@ -70,7 +91,7 @@ model = VAE(config).to(config.device)
 
 if config.load_pretrained and not config.eval:
     config.arch = 'vae'
-    model.encoder = load_pretrained(model.encoder, config)
+    model = load_pretrained(model, config)
 
 # Init optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=config.lr, betas=(0., 0.9),
@@ -84,10 +105,10 @@ if config.eval:
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
 
 
-def vae_train_step(model, optimizer, input) -> dict:
+def vae_train_step(input) -> dict:
     model.train()
     optimizer.zero_grad()
-    input_recon, mu, logvar = model(input.repeat(1, 1, 1, 1))
+    input_recon, mu, logvar = model(input)
     loss_dict = model.loss_function(input, input_recon, mu, logvar)  # VAE loss
     loss = loss_dict['loss']
     loss.backward()
@@ -95,11 +116,13 @@ def vae_train_step(model, optimizer, input) -> dict:
     return loss_dict
 
 
-def vae_val_step(model, input, return_loss: bool = True) -> Tuple[dict, Tensor]:
+def vae_val_step(input, return_loss: bool = True) -> Tuple[dict, Tensor]:
 
     model.eval()
+
     with torch.no_grad():
-        input_recon, mu, logvar = model(input.repeat(1, 1, 1, 1))
+        input_recon, mu, logvar = model(input)
+
     loss_dict = model.loss_function(input, input_recon, mu, logvar)  # VAE Loss
 
     # Anomaly map
@@ -107,13 +130,18 @@ def vae_val_step(model, input, return_loss: bool = True) -> Tuple[dict, Tensor]:
         anomaly_map = ssim_map(input_recon, input)
     else:
         anomaly_map = (input - input_recon).abs().mean(1, keepdim=True)
-    # for MRI, apply brainmask
+    # for MRI, RF apply brainmask
     if config.modality == 'MRI':
         mask = torch.stack([inp > inp.min() for inp in input])
         anomaly_map *= mask
         input_recon *= mask
-    if config.modality == 'MRI':
         anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
+
+    elif config.modality in ['RF']:
+        mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
+        anomaly_map *= mask
+        anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
+                                     for map, inp in zip(anomaly_map, input)])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
 
@@ -123,16 +151,18 @@ def vae_val_step(model, input, return_loss: bool = True) -> Tuple[dict, Tensor]:
         return anomaly_map, anomaly_score, input_recon
 
 
-def validate(model, val_loader, i_iter, config) -> None:
+def validate(val_loader, config) -> None:
 
     val_losses = defaultdict(list)
     i_val_step = 0
 
     for input in val_loader:
+
         i_val_step += 1
+
         input = input.to(config.device)
 
-        loss_dict, anomaly_map, anomaly_score, input_recon = vae_val_step(model, input)
+        loss_dict, anomaly_map, anomaly_score, input_recon = vae_val_step(input)
 
         for k, v in loss_dict.items():
             val_losses[k].append(v.item())
@@ -146,27 +176,19 @@ def validate(model, val_loader, i_iter, config) -> None:
     print(log_msg)
 
     # Log to wandb
-    logger.log(
+    log(
         {f'val/{k}': np.mean(v)
          for k, v in val_losses.items()},
-        step=i_iter
+        config
     )
 
     # log images and residuals
-    input_images = list(input.cpu()[:config.num_images_log])
-    input_images = [wandb.Image(image) for image in input_images]
 
-    reconstructions = list(input_recon.cpu()[:config.num_images_log])
-    reconstructions = [wandb.Image(image) for image in reconstructions]
-
-    residuals = list(anomaly_map[:config.num_images_log].cpu())
-    residuals = [wandb.Image(image) for image in residuals]
-
-    logger.log({
-        'val/input': input_images,
-        'val/recon': reconstructions,
-        'val/res': residuals,
-    }, step=i_iter)
+    log({
+        'val/input': input,
+        'val/recon': input_recon,
+        'val/res': anomaly_map,
+    }, config)
 
     return np.mean(val_losses['loss'])
 
@@ -174,67 +196,63 @@ def validate(model, val_loader, i_iter, config) -> None:
 def train(model):
 
     print('Starting training VAE...')
-
-    i_iter = 0
     i_epoch = 0
     train_losses = defaultdict(list)
-
     t_start = time()
 
     while True:
-        for input in train_loader:
-            i_iter += 1
-            input = input.to(config.device)
 
+        for input in train_loader:
+
+            config.step += 1
+            input = input.to(config.device)
             # Train step
-            loss_dict = vae_train_step(model, optimizer, input)
+            loss_dict = vae_train_step(input)
 
             # Each step store train losses
             for k, v in loss_dict.items():
                 train_losses[k].append(v.item())
 
-            if i_iter % config.log_frequency == 0 or i_iter == 10 or i_iter == 50 or i_iter == 100:
+            if config.step % config.log_frequency == 0:  # or i_iter == 10 or i_iter == 50 or i_iter == 100:
                 # Print training loss
                 log_msg = " - ".join([f'{k}: {np.mean(v):.4f}' for k,
                                       v in train_losses.items()])
-                log_msg = f"Iteration {i_iter} - " + log_msg
+                log_msg = f"Iteration {config.step} - " + log_msg
                 log_msg += f" - time: {time() - t_start:.2f}s"
                 print(log_msg)
 
                 # Log to wandb
-                logger.log(
-                    {f'train/{k}': np.mean(v)
-                     for k, v in train_losses.items()},
-                    step=i_iter
+                log(
+                    {f'train/{k}': np.mean(v) for k, v in train_losses.items()},
+                    config
                 )
 
                 # Reset loss dict
                 train_losses = defaultdict(list)
 
-            if i_iter % config.val_frequency == 0 or i_iter == 10 or i_iter == 50 or i_iter == 100:
-                validate(model, val_loader, i_iter, config)
+            if config.step % config.val_frequency == 0:  # or i_iter == 10 or i_iter == 50 or i_iter == 100:
+                validate(val_loader, config)
 
-            if i_iter % config.anom_val_frequency == 0 or i_iter == 10 or i_iter == 50 or i_iter == 100:
-                evaluate(model, small_testloader, i_iter,
-                         vae_val_step, logger, config, val_loader)
+            if config.step % config.anom_val_frequency == 0:
+                # or i_iter == 10 or i_iter == 50 or i_iter == 100:
+                evaluate(config, small_testloader, vae_val_step, val_loader)
 
-            if i_iter % config.save_frequency == 0 and i_iter != 0:
+            if config.step % config.save_frequency == 0:
+                save_model(model, config, i_iter=config.step)
+
+            if config.step >= config.max_steps:
                 save_model(model, config)
-
-            if i_iter >= config.max_steps:
-                save_model(model, config)
-                print(f'Reached {config.max_steps} iterations. Finished training {config.naming_str}.')
+                print(f'Reached {config.max_steps} iterations. Finished training {config.name}.')
                 return
 
         i_epoch += 1
-        print(f'Finished epoch {i_epoch}, ({i_iter} iterations)')
+        print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
 
 
 if __name__ == '__main__':
     if config.eval:
-        config.num_images_log = 100
         print('Evaluating model...')
-        evaluate(model, big_testloader, 0, vae_val_step, logger, config, val_loader)
+        evaluate(config, big_testloader, vae_val_step, val_loader)
 
     else:
         train(model)

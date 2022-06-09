@@ -1,13 +1,12 @@
-import os
+
 import numpy as np
 import torch
-from PIL import Image
 from torch.utils.data import Dataset
-from torchvision import transforms as T
-from augmentations import Rotation, Cutout1, Cutout, Gaussian_noise, CutPerm
+from augmentations import Cutout1, CutPerm  # ,Rotation,  Cutout, Gaussian_noise
 import torchvision.transforms as transforms
-from argparse import Namespace
-from glob import glob
+import sys
+sys.path.append('/u/home/lagi/thesis')
+from DatasetPreprocessing.mri import get_camcan_slices
 
 
 class CCD_Dataset(Dataset):
@@ -16,20 +15,17 @@ class CCD_Dataset(Dataset):
         strong_aug = CutPerm()
         self.data = []
 
-        self.imgs = np.asarray(get_files(config))
+        # We first resize the image to int(config.image_size // 0.875). It will eventually be resized
+        # to config.image_size with the random_crop later in the pipeline
+        backup = config.image_size
+        config.image_size = int(config.image_size // 0.875)
+        self.imgs = get_camcan_slices(config)
+        self.imgs = self.imgs[np.sum(self.imgs, axis=(1, 2, 3)) > 0]
+        # return to original config.image_size, because vae model needs it to initialize
+        config.image_size = backup
 
-        # image will be resized later to config.image_size with RandomResizedCrop
-        img_size = int(config.image_size * 0.875)
-
-        self.initial_transform = T.Compose([
-            T.Resize((img_size, img_size), T.InterpolationMode.LANCZOS),
-            T.CenterCrop(img_size),
-            T.ToTensor(),
-        ])
-
-        for index in range(len(self.imgs)):
-            img = Image.open(self.imgs[index])
-            img = self.initial_transform(img)
+        for img in self.imgs:
+            img = torch.FloatTensor(img)
             self.data.append(img)
 
         self.data = torch.stack(self.data)
@@ -45,7 +41,7 @@ class CCD_Dataset(Dataset):
 
             tmp = self.data[i].unsqueeze(0)
             images = torch.cat([strong_aug(tmp, k)
-                               for k in range(self.num_of_strong_aug_classes)])  # [4,c,h,w]
+                                for k in range(self.num_of_strong_aug_classes)])  # [4,c,h,w]
 
             # shift_labels = [0., 1., 2., 3.]
             shift_labels = np.asarray([1. * k for k in range(self.num_of_strong_aug_classes)])
@@ -107,12 +103,10 @@ def get_train_dataloader(config):
 
     # SimCLR transforms
     transform = transforms.Compose([
-        transforms.RandomResizedCrop(size=config.image_size, scale=[0.1, 1.0]),
+        transforms.RandomResizedCrop(size=config.image_size, scale=[0.2, 1.0]),
         transforms.RandomHorizontalFlip(),
         transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
         transforms.RandomGrayscale(0.2),
-        # transforms.ToTensor(),
-        # transforms.Normalize(**p['augmentation_kwargs']['normalize']),
         Cutout1(n_holes=1, length=75, random=True)
     ])
 
@@ -120,16 +114,6 @@ def get_train_dataloader(config):
 
     dataset = AugmentedDataset(dataset)
 
-    return torch.utils.data.DataLoader(dataset,
-                                       num_workers=8,
-                                       batch_size=32,
-                                       pin_memory=True,
-                                       drop_last=True,
-                                       shuffle=True)
-
-
-def get_files(config: Namespace, train: bool = True):
-
-    paths = glob(os.path.join(config.datasets_dir, 'cam_can_slices', '*.png'))
-
-    return paths
+    return torch.utils.data.DataLoader(dataset, num_workers=8,
+                                       batch_size=32, pin_memory=True,
+                                       drop_last=True, shuffle=True)

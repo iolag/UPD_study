@@ -128,8 +128,6 @@ if config.load_pretrained:
 # Init optimizer
 optimizer = torch.optim.Adam(model.parameters(),
                              lr=config.lr, weight_decay=config.weight_decay)
-# print
-# model.extractor.feat_extractor.print_dims(torch.ones((4, 3, 128, 128)).cuda())
 
 # Load saved model to evaluate
 if config.eval:
@@ -137,16 +135,56 @@ if config.eval:
     print('Saved model loaded.')
 
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
+from scipy.ndimage import gaussian_filter
+cos_loss = torch.nn.CosineSimilarity()
+
+
+def loss_fucntion(feats, rec):
+    # idx = [128, 256, 1024, 3072]
+    idx = [64, 64, 128, 128, 256, 256, 256, 256, 512, 512, 512, 512, 512, 512]
+    loss = 0
+    start = 0
+    for layer in idx:
+
+        loss += torch.mean(1 - cos_loss(feats[start:layer].view(feats.shape[0], -1),
+                                        rec[start:layer].view(rec.shape[0], -1)))
+        start = layer
+    return loss
 
 
 def train_step(input) -> Tuple[float, Tensor]:
     model.train()
     optimizer.zero_grad()
     feats, rec = model(input)
-    loss = torch.mean((feats - rec) ** 2)
+    loss = loss_fucntion(feats, rec)
     loss.backward()
     optimizer.step()
     return loss.item(), rec
+
+
+def get_anomaly_map(feats, rec, config) -> Tensor:
+    # idx = [128, 256, 1024, 3072]
+    idx = [64, 64, 128, 128, 256, 256, 256, 256, 512, 512, 512, 512, 512, 512]
+
+    anomaly_map = torch.zeros(feats.shape[0], 1, config.image_size, config.image_size).to(config.device)
+
+    start = 0
+    for layer in idx:
+        fs = feats[:, start:layer]
+        ft = rec[:, start:layer]
+        a_map = 1 - F.cosine_similarity(fs, ft)
+        a_map = torch.unsqueeze(a_map, dim=1)
+        a_map = F.interpolate(a_map, size=config.image_size, mode='bilinear', align_corners=True)
+        anomaly_map += a_map
+        start = layer
+
+    anomaly_map = anomaly_map.detach().cpu().numpy()
+    # apply gaussian smoothing on the score map
+    for i in range(anomaly_map.shape[0]):
+        anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=4)
+
+    anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
+    return anomaly_map
 
 
 def val_step(input, return_loss: bool = True) -> Tuple[float, Tensor, Tensor]:
@@ -158,14 +196,7 @@ def val_step(input, return_loss: bool = True) -> Tuple[float, Tensor, Tensor]:
         feats, rec = model(input)
         map_small = torch.mean((feats - rec) ** 2, dim=1, keepdim=True)
         loss = map_small.mean()
-
-        anomaly_map = F.interpolate(map_small, input.shape[-2:], mode='bilinear', align_corners=True)
-
-        if config.ssim_eval:
-            anom_map_small = ssim_map(feats, rec)
-            anomaly_map = F.interpolate(anom_map_small, input.shape[-2:], mode='bilinear', align_corners=True)
-        else:
-            anomaly_map = F.interpolate(map_small, input.shape[-2:], mode='bilinear', align_corners=True)
+        anomaly_map = get_anomaly_map(feats, rec, config)
 
     if config.modality == 'MRI':
         mask = torch.stack([inp > inp.min() for inp in input])
