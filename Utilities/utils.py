@@ -19,6 +19,7 @@ import random
 import wandb
 os.environ["WANDB_SILENT"] = "true"
 import torchgeometry as tgm
+from torch import nn
 
 
 def load_pretrained(model, config):
@@ -45,6 +46,9 @@ def load_pretrained(model, config):
         print('Pretrained backbone loaded.')
 
     else:
+        if config.method == 'f-anoGAN':
+            model.fc = nn.Linear(4 * 4 * 8 * config.dim, 1024).to(config.device)
+
         model_dict = model.state_dict()
         pretrained_dict = torch.load(
             f'/u/home/lagi/thesis/UAD_study/Models/CCD/saved_models/{config.modality}/{pretrained}_.pth')
@@ -56,6 +60,10 @@ def load_pretrained(model, config):
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
         model_dict.update(pretrained_dict)
         model.load_state_dict(model_dict)
+
+        if config.method == 'f-anoGAN':
+            model.fc = nn.Linear(4 * 4 * 8 * config.dim, config.latent_dim).to(config.device)
+
         print('Pretrained backbone loaded.')
     return model
 
@@ -78,10 +86,26 @@ def save_model(model, config, i_iter: Union[int, str] = ""):
 
 
 def load_model(config):
+
     if config.method == 'RD':
+
         load_dec = torch.load(f'saved_models/{config.modality}/{config.name}_dec_{config.load_iter}.pth')
         load_bn = torch.load(f'saved_models/{config.modality}/{config.name}_bn_{config.load_iter}.pth')
         return load_dec, load_bn
+
+    elif config.method == 'f-anoGAN':
+
+        if config.eval:
+            load_g = torch.load(f'saved_models/{config.modality}/{config.name}_netG.pth'.replace('_CCD', ''))
+            load_d = torch.load(f'saved_models/{config.modality}/{config.name}_netD.pth'.replace('_CCD', ''))
+            load_e = torch.load(f'saved_models/{config.modality}/{config.name}_netE.pth')
+            return load_g, load_d, load_e
+        # the 2 distinct run scenario where wgan is already trained and we want to train encoder
+        else:
+            load_g = torch.load(f'saved_models/{config.modality}/{config.name}_netG.pth'.replace('_CCD', ''))
+            load_d = torch.load(f'saved_models/{config.modality}/{config.name}_netD.pth'.replace('_CCD', ''))
+            return load_g, load_d
+
     else:
         return torch.load(f'saved_models/{config.modality}/{config.name}_{config.load_iter}.pth')
 
@@ -96,6 +120,8 @@ def misc_settings(config):
     """
     # msg = "num_images_log should be lower or equal to batch size"
     # assert (config.batch_si   ze >= config.num_images_log), msg
+    if config.modality == 'RF':
+        config.stadardize = True
 
     if not config.limited_metrics:
         config.f1_normal = True
@@ -104,6 +130,8 @@ def misc_settings(config):
 
         # Select training device
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    print(f"Training on {config.device}")
 
     # Multi purpose model name string
     if config.method == 'CCD':
@@ -383,7 +411,7 @@ def mean_std(dataloader: DataLoader, mask: bool = False) -> Tuple[torch.Tensor, 
 class GenericDataloader(DataLoader):
     """
     Generic Dataloader class to reduce boilerplate.
-    Requires only Dataset object and configuration file for instantiation.
+    Requires only Dataset object and configuration object for instantiation.
 
     Args:
         dataset (Dataset): dataset from which to load the data.
@@ -395,7 +423,7 @@ class GenericDataloader(DataLoader):
             dataset,
             batch_size=config.batch_size,
             shuffle=shuffle,
-            pin_memory=True,
+            pin_memory=False,
             num_workers=config.num_workers,
             drop_last=False)
 
@@ -453,11 +481,23 @@ def load_data(config):
 
     if config.modality == 'CT':
         train_loader, val_loader, big_testloader, small_testloader = get_dataloaders(config)
+
+        print('Training set: {} samples, Valid set: {} samples'.format(
+            len(train_loader.dataset),
+            len(val_loader.dataset),
+        ))
+        print('Big test-set: {} samples, Small test-set: set: {} samples.'.format(
+            len(big_testloader.dataset),
+            len(small_testloader.dataset),
+        ))
+
+        print(f'Loaded datasets in {time() - t_load_data_start:.2f}s')
+        return train_loader, val_loader, big_testloader, small_testloader
     else:
         # For testloaders make batch_size equal to num_images_log, the number of images to log on wandb.
         # In evaluate.py there is the need to run through the dataloader once to calc threshold
         # when running through it again to produce and log images, it is more convenient to do it through
-        # a single testloader iteration, instead oif many testloader iterations until we aggregate the desired
+        # a single testloader iteration, instead of doing many testloader iterations until we aggregate the desired
         # number of images we want to log.
         temp = config.batch_size
         config.batch_size = config.num_images_log

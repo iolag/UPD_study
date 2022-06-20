@@ -148,7 +148,7 @@ def val_step(input, return_loss: bool = True) -> Tuple[float, Tensor, Tensor]:
     loss = loss_fucntion(enc_output, dec_output)
     anomaly_map = get_anomaly_map(enc_output, dec_output, config)
 
-    if config.modality in ['MRI', 'MRInoram']:
+    if config.modality in ['MRI', 'MRInoram', 'CT']:
         mask = torch.stack([inp > inp.min() for inp in input])
         # anomaly_map *= mask
         # mins = [(map[map > 0]) for map in anomaly_map]
@@ -201,9 +201,9 @@ def train() -> None:
 
                 # Reset loss dict
                 train_losses = []
-            # s = config.step
+            s = config.step
 
-            if config.step % config.anom_val_frequency == 0:  # or s == 10 or s == 50 or s == 100:
+            if config.step % config.anom_val_frequency == 0 or s == 10 or s == 50 or s == 100 or s == 500:
                 evaluate(config, small_testloader, val_step, val_loader)
 
             if config.step % config.save_frequency == 0:

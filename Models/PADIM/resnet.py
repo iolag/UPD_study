@@ -231,7 +231,7 @@ class ResNet(nn.Module):
         feature_a = self.layer1(x)
         feature_b = self.layer2(feature_a)
         feature_c = self.layer3(feature_b)
-        # feature_d = self.layer4(feature_c)
+        feature_d = self.layer4(feature_c)
 
         return [feature_a, feature_b, feature_c]
 

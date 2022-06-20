@@ -167,7 +167,7 @@ def val_step(input, return_loss: bool = True) -> Tuple[float, Tensor, Tensor]:
         else:
             anomaly_map = F.interpolate(map_small, input.shape[-2:], mode='bilinear', align_corners=True)
 
-    if config.modality == 'MRI':
+    if config.modality in ['MRI', 'CT']:
         mask = torch.stack([inp > inp.min() for inp in input])
         anomaly_map *= mask
         anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])

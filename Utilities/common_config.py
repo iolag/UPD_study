@@ -38,7 +38,7 @@ def common_config(parser):
     parser.add_argument('--modality', '-mod', type=str, default='MRI', help='MRI sequence')
     parser.add_argument('--normal_split', '-ns', type=float, default=0.95, help='normal set split')
     parser.add_argument('--anomal_split', '-as', type=float, default=0.90, help='anomaly set split')
-    parser.add_argument('--num_workers', type=int, default=7, help='Number of workers')
+    parser.add_argument('--num_workers', type=int, default=30, help='Number of workers')
 
     # MRI specific settings
     parser.add_argument('--sequence', '-seq', type=str, default='t2',
@@ -70,7 +70,7 @@ def common_config(parser):
     parser.add_argument('--anom_val_frequency', '-avf', type=int, default=1000,
                         help='Validation frequency on anomalous samples')
     parser.add_argument('--val_steps', type=int, default=50, help='validation steps')
-    parser.add_argument('--num_images_log', '-nil', type=int, default=20, help='Number of images to log')
+    parser.add_argument('--num_images_log', '-nil', type=int, default=32, help='Number of images to log')
 
     # SSIM evaluation
     parser.add_argument('--ssim_eval', type=str_to_bool, default=True,

@@ -186,7 +186,9 @@ def get_dataloaders(config: Namespace,
             non_zero_idx_b = np.sum(slices_big, axis=(1, 2, 3)) > 0
             slices_big = slices_big[non_zero_idx_b]
             seg_big = seg_big[non_zero_idx_b]
-
+            for i in slices_big:
+                if np.count_nonzero(i) < 5:
+                    print(np.count_nonzero(i))
             big = AnomalDataset([slices_big, seg_big], config)
             small = AnomalDataset([slices_small, seg_small], config)
 

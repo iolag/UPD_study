@@ -174,6 +174,7 @@ class NormalDataset(Dataset):
         """
 
         image = Image.open(self.files[idx])
+
         image = self.transforms(image)
 
         if self.stadardize:
@@ -215,18 +216,18 @@ class AnomalDataset(Dataset):
             T.ToTensor()
         ])
 
-        self.mask_transforms = T.Compose([
-            T.Resize((config.image_size), T.InterpolationMode.NEAREST),
-            T.CenterCrop((config.image_size)),
-            T.ToTensor()
-        ])
+        # self.mask_transforms = T.Compose([
+        #     T.Resize((config.image_size), T.InterpolationMode.NEAREST),
+        #     T.CenterCrop((config.image_size)),
+        #     T.ToTensor()
+        # ])
 
         if config.dataset in ['KAGGLE', 'IDRID']:
             mean = np.array([0.4662, 0.3328, 0.2552])
             std = np.array([0.2841, 0.2092, 0.1733])
-        else:
-            mean = np.array([0.5013, 0.3156, 0.2091])
-            std = np.array([0.2052, 0.1535, 0.1185])
+        # else:
+        #     mean = np.array([0.5013, 0.3156, 0.2091])
+        #     std = np.array([0.2052, 0.1535, 0.1185])
 
         self.norm = T.Normalize(mean, std)
 
@@ -248,17 +249,17 @@ class AnomalDataset(Dataset):
         # for compatibility, create image-like pixel masks to use as labels
         # should have 1 channel dim to be consistent with pixel AP calc
 
-        if self.dataset == 'IDRID':
-            if self.labels[idx] == 0:
-                mask = torch.zeros_like(image)[0].unsqueeze(0)
-            else:
-                mask = Image.open(self.labels[idx])
-                mask = self.mask_transforms(mask)
+        # if self.dataset == 'IDRID':
+        #     if self.labels[idx] == 0:
+        #         mask = torch.zeros_like(image)[0].unsqueeze(0)
+        #     else:
+        #         mask = Image.open(self.labels[idx])
+        #         mask = self.mask_transforms(mask)
+        # else:
+        if self.labels[idx] == 0:
+            mask = torch.zeros_like(image)[0].unsqueeze(0)
         else:
-            if self.labels[idx] == 0:
-                mask = torch.zeros_like(image)[0].unsqueeze(0)
-            else:
-                mask = torch.eye(image.shape[-1]).unsqueeze(0)
+            mask = torch.eye(image.shape[-1]).unsqueeze(0)
 
         return image, mask
 

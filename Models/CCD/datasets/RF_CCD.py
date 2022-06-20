@@ -3,7 +3,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms as T
-from augmentations import Rotation, Cutout1  # , Cutout, Gaussian_noise,  CutPerm
+from augmentations import Rotation, Cutout1, Cutout, Gaussian_noise, CutPerm
 import torchvision.transforms as transforms
 from Dataloaders.RF import get_files
 
@@ -11,7 +11,16 @@ from Dataloaders.RF import get_files
 class CCD_Dataset(Dataset):
     def __init__(self, config, transform=None):
         self.transform = transform
-        strong_aug = Rotation()
+
+        if config.cls_augmentation == 'noise':
+            strong_aug = Gaussian_noise()
+        elif config.cls_augmentation == 'cutperm':
+            strong_aug = CutPerm()
+        elif config.cls_augmentation == 'cutout':
+            strong_aug = Cutout()
+        elif config.cls_augmentation == 'rotation':
+            strong_aug = Rotation()
+
         self.data = []
 
         self.imgs = np.asarray(get_files(config))

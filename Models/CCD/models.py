@@ -29,8 +29,6 @@ def backbone_architecture(config):
 
         elif config.backbone_arch == 'wide_resnet50_2':
             backbone = models.wide_resnet50_2(pretrained=True, progress=True)
-            # backbone.conv1.stride = 1
-
             backbone.fc = nn.Identity()
 
             return {'backbone': backbone, 'dim': 2048}
@@ -49,6 +47,7 @@ def backbone_architecture(config):
     elif 'fanogan' == config.backbone_arch:
         model = Encoder(config)
         backbone = model
+        # 1024 instead of 128 of orig. architecture, with 128 ccd would not converge properly
         backbone.fc = nn.Linear(4 * 4 * 8 * 64, 1024)
         return {'backbone': backbone, 'dim': 1024}
 

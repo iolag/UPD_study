@@ -1,20 +1,15 @@
-from cgi import test
 import sys
 sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
 import torch
 from argparse import ArgumentParser
 import numpy as np
-import math
 from time import time
 import torch.nn.functional as F
 from model import load_decoder, load_encoder, positionalencoding2d, activation
 from Utilities.common_config import common_config
-# from utils import adjust_learning_rate, warmup_learning_rate
 from Utilities.evaluate import evaluate
-from Utilities.utils import (save_model, seed_everything,
-                             load_data, load_pretrained,
-                             misc_settings,
-                             load_model, log)
+from Utilities.utils import (seed_everything, load_data, load_pretrained,
+                             misc_settings, log)
 
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
@@ -34,15 +29,11 @@ def get_config():
                         help='number of layers used in NF model (default: 8)')
 
     # Training Hyperparameters
-    parser.add_argument('--max-steps', type=int, default=2000, help='Number of training steps')
+    parser.add_argument('--max-steps', '-ms', type=int, default=3000, help='Number of training steps')
     parser.add_argument('-bs', '--batch-size', default=32, type=int, metavar='B',
                         help='train batch size (default: 32)')
     parser.add_argument('--lr', type=float, default=2e-4, metavar='LR',
                         help='learning rate (default: 2e-4)')
-    parser.add_argument('--meta-epochs', type=int, default=25, metavar='N',
-                        help='number of meta epochs to train (default: 25)')
-    parser.add_argument('--sub-epochs', type=int, default=8, metavar='N',
-                        help='number of sub epochs to train (default: 8)')
 
     return parser.parse_args()
 
@@ -67,7 +58,6 @@ train_loader, val_loader, big_testloader, small_testloader = load_data(config)
 
 """"""""""""""""""""""""""""" Other method settings """""""""""""""""""""""""""""
 
-theta = torch.nn.Sigmoid()
 log_theta = torch.nn.LogSigmoid()
 GCONST = -0.9189385332046727  # ln(sqrt(2*pi))
 
@@ -75,15 +65,14 @@ GCONST = -0.9189385332046727  # ln(sqrt(2*pi))
 """"""""""""""""""""""""""" Init model/optimizer """""""""""""""""""""""""""
 # Reproducibility
 seed_everything(config.seed)
-config.modality = 'CXR'
+
 # Backbone pre-trained encoder
 encoder, pool_layers, pool_dims = load_encoder(config)
 encoder = encoder.to(config.device)
 
-config.modality = 'MRI'
+
 # load pretrained with CCD
 if config.load_pretrained:
-    config.modality = 'MRI' if config.modality == "MRInoram" else config.modality
     encoder = load_pretrained(encoder, config)
 
 encoder.eval()
@@ -111,17 +100,13 @@ def train():
 
     print('Starting training CFLOW-AD...')
 
-    i_epoch = 0
-    i_sub_epoch = 0
     train_losses = []
-
     t_start = time()
 
     while True:
         for i, batch in enumerate(train_loader):
 
             config.step += 1
-
             loss = train_step(batch)
             train_losses.append(loss.item())
 
@@ -130,7 +115,6 @@ def train():
                 log_msg = f" Train Loss: {np.mean(train_losses):.4f}"
                 log_msg = f"Iteration {config.step} - " + log_msg
                 log_msg += f" - time: {time() - t_start:.2f}s"
-                log_msg += f" - lr: {config.lr:.8f}"
 
                 print(log_msg)
 
@@ -140,7 +124,7 @@ def train():
                 # Reset loss
                 train_losses = []
 
-            if config.step % config.anom_val_frequency == 0:
+            if config.step % config.anom_val_frequency == 0 or config.step == 100 or config.step == 500:
                 evaluate(config, small_testloader, eval_step, val_loader)
 
             if config.step >= config.max_steps:
@@ -154,10 +138,6 @@ def train():
                 for i, decoder in enumerate(decoders):
                     torch.save(decoder.state_dict(),
                                f'saved_models/{config.modality}/{config.name}_{config.step}_decoder_{i}.pth')
-
-            if config.step % 100 == 0:
-                i_epoch += 1
-                i_sub_epoch += 1
 
 
 def train_step(batch):
@@ -176,7 +156,7 @@ def train_step(batch):
 
     train_loss = 0.0
     train_count = 0
-    train_dist = [list() for layer in pool_layers]
+    train_dist = []
     # iterate over specified {num_pool_layers} number of activations and train a decoder for each
     for i, layer in enumerate(pool_layers):  # eg. layer = 'layer 1' (lower number means deeper block)
 
@@ -207,15 +187,15 @@ def train_step(batch):
         optimizer.step()
         train_loss += loss.sum().cpu().data.numpy()
         train_count += len(loss)
-        train_dist[i] = log_prob.detach().cpu().tolist()
+        train_dist.append(log_prob.detach())
 
-    config.running_max = [0, 0, 0]
+    config.current_max = torch.tensor([0, 0, 0]).to(config.device)
 
     for i, p in enumerate(pool_layers):
-        test_prob = torch.tensor(train_dist[i], dtype=torch.double)
+        test_prob = train_dist[i]
         layer_max = test_prob.max()
-        if layer_max > config.running_max[i]:
-            config.running_max[i] = layer_max
+        if layer_max > config.current_max[i]:
+            config.current_max[i] = layer_max
 
     mean_train_loss = train_loss / train_count
 
@@ -223,7 +203,7 @@ def train_step(batch):
 
 
 @torch.no_grad()
-def eval_step(input, return_loss: False):
+def eval_step(input, return_loss: bool = False):
     """Forward-pass images into the network to extract encoder features and compute probability.
         Args:
           input: Batch of images.
@@ -244,7 +224,7 @@ def eval_step(input, return_loss: False):
 
     height = []
     width = []
-    test_dist = [list() for layer in pool_layers]
+    test_dist = []  # [list() for layer in pool_layers]
 
     for i, layer in enumerate(pool_layers):
         decoder = decoders[i]
@@ -266,25 +246,26 @@ def eval_step(input, return_loss: False):
         decoder_log_prob = C * GCONST - 0.5 * torch.sum(z**2, 1) + log_jac_det
         log_prob = decoder_log_prob / C  # likelihood per dim
 
-        test_dist[i] = log_prob.detach().cpu().tolist()
+        test_dist.append(log_prob.detach())
+
+    # will use this during test time to infer a max to normalize (see __main__)
+    config.test_max = torch.tensor([0, 0, 0]).to(config.device)
+    for i, p in enumerate(pool_layers):
+        test_prob = test_dist[i]
+        layer_max = test_prob.max()
+        if layer_max > config.current_max[i]:
+            config.current_max[i] = layer_max
 
     test_map = [list() for p in pool_layers]
 
-    # maxi = 0
-
-    # for i, p in enumerate(pool_layers):
-    #     test_prob = torch.tensor(test_dist[i], dtype=torch.double)
-    #     layer_max = test_prob.max()
-    #     if layer_max > maxi:
-    #         maxi = layer_max
-
     for i, p in enumerate(pool_layers):
 
-        test_prob = torch.tensor(test_dist[i], dtype=torch.double)  # EHWx1
+        test_prob = test_dist[i]  # EHWx1
         test_prob = test_prob.reshape(-1, height[i], width[i])
         # normalize likelihoods to (-Inf:0] by subtracting a constant
-        test_prob = test_prob - max(config.running_max)  # -est_prob.max()  #
+        test_prob = test_prob - torch.max(config.current_max)  # -est_prob.max()  #
         test_prob = torch.exp(test_prob)  # convert to probs in range [0:1]
+        #print(test_prob.min(), test_prob.max())
         # upsample
         test_map[i] = F.interpolate(test_prob.unsqueeze(1),
                                     size=config.image_size, mode='bilinear',
@@ -294,25 +275,25 @@ def eval_step(input, return_loss: False):
     anomaly_map = torch.zeros_like(test_map[0])
     for i, p in enumerate(pool_layers):
         anomaly_map += test_map[i]
-
+    anomaly_map /= len(pool_layers)
     # invert to get anomaly maps
-    # for j, mx in enumerate(anomaly_map.amax(dim=(1, 2, 3))):
-    #     anomaly_map[j] = mx - anomaly_map[j]
-    # changed this to not be depend on batch and also have same scaling (instead of per batch sample anom_map.max() - anom_map)
+    # changed this to not be depend on batch and also have same scaling
+    #  (instead of per batch sample anom_map.max() - anom_map)
+   # print(test_prob.min(), test_prob.max())
     anomaly_map = 1 - anomaly_map
-    # apply brainmask for MRI
+    # p rint(anomaly_map.min(), anomaly_map.max())
 
-    if config.modality == 'MRI' or config.modality == 'MRInoram':
+    # apply brainmask for MRI
+    if config.modality in ['MRI', 'MRInoram', 'CT']:
         # normalize brain pixels only
         input = input[:, 0].unsqueeze(1)
         mask = torch.stack([inp > inp.min() for inp in input])
-        # anomaly_map *= mask
-        # mins = [(map[map > 0]) for map in anomaly_map]
-        # mins = [map.min() for map in mins]
-
-        # anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
-
+        # scale anomaly maps by substracting the minimum non-background value for better visualisation
         anomaly_map *= mask
+        # mins = [(map[msk].min()) for map, msk in zip(anomaly_map, mask)]
+        # anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
+        # anomaly_map *= mask
+
         anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
 
     elif config.modality in ['RF']:
@@ -331,25 +312,36 @@ if __name__ == '__main__':
         train()
     else:
         print('Evaluating model...')
+        # Do a train step to get config.current_max
+        input = next(iter(train_loader))
+        input = input.to(config.device)
+        if input.shape[1] == 1:
+            input = input.repeat(1, 3, 1, 1)
+        config.current_max = torch.tensor([0, 0, 0]).to(config.device)
+
+        _, _ = eval_step(input)
+        config.current_max = config.test_max
+
         evaluate(config, big_testloader, eval_step, val_loader)
 
-        # perm = torch.randperm(BHW).to(config.device)  # BHW
-       # N = 64  # hyperparameter that increases batch size for the decoder model by N
-        # FIB = BHW // N  # number of fiber batches
-        # #https://github.com/gudovskiy/cflow-ad/issues/18
-        # #https://github.com/gudovskiy/cflow-ad/issues/18
-        # assert FIB > 0, 'MAKE SURE WE HAVE ENOUGH FIBERS, otherwise decrease N or batch-size!'
-        # for f in range(FIB):  # per-fiber processing
-        #     idx = torch.arange(f * N, (f + 1) * N)
-        #     c_p = c_r[perm[idx]]  # NxP
-        #     e_p = e_r[perm[idx]]  # NxC
 
-        # if i_epoch % config.sub_epochs:
-        #     adjust_learning_rate(config, optimizer, i_epoch)
-        #     i_sub_epoch = 0
+# perm = torch.randperm(BHW).to(config.device)  # BHW
+# N = 64  # hyperparameter that increases batch size for the decoder model by N
+# FIB = BHW // N  # number of fiber batches
+# #https://github.com/gudovskiy/cflow-ad/issues/18
+# #https://github.com/gudovskiy/cflow-ad/issues/18
+# assert FIB > 0, 'MAKE SURE WE HAVE ENOUGH FIBERS, otherwise decrease N or batch-size!'
+# for f in range(FIB):  # per-fiber processing
+#     idx = torch.arange(f * N, (f + 1) * N)
+#     c_p = c_r[perm[idx]]  # NxP
+#     e_p = e_r[perm[idx]]  # NxC
 
-        # config.lr = warmup_learning_rate(config, i_epoch, i + i_sub_epoch * len(train_loader),
-        #                                  len(train_loader) * config.sub_epochs, optimizer)
+# if i_epoch % config.sub_epochs:
+#     adjust_learning_rate(config, optimizer, i_epoch)
+#     i_sub_epoch = 0
+
+# config.lr = warmup_learning_rate(config, i_epoch, i + i_sub_epoch * len(train_loader),
+#                                  len(train_loader) * config.sub_epochs, optimizer)
 
 # # learning rate hparams
 # config.lr_decay_epochs = [i * config.meta_epochs // 100 for i in [50, 75, 90]]

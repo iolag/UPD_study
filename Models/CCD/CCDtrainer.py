@@ -22,6 +22,12 @@ def get_config():
     parser = argparse.ArgumentParser()
     parser = common_config(parser)
 
+    parser.add_argument('--cls-augmentation', '-aug', type=str, default='cutperm',
+                        help='Augmentation for the classification task',
+                        choices=['cutperm', 'rotation', 'cutout', 'noise'])
+
+    parser.add_argument('--lr-schedule', '-sch', type=str_to_bool, default=True,
+                        help='Train only with the SimClr task')
     parser.add_argument('--only-simclr', type=str_to_bool, default=False,
                         help='Train only with the SimClr task')
     parser.add_argument('--backbone-arch', type=str, default='wide_resnet50_2', help='Backbone architecture.',
@@ -58,7 +64,6 @@ if config.modality == 'CXR':
     config.latent_dim = 256
     config.width = 16
     config.conv1x1 = 64
-    config.stadardize = True
 
 if config.modality == 'COL':
     config.kl_weight = 0.0001
@@ -66,7 +71,6 @@ if config.modality == 'COL':
     config.latent_dim = 256
     config.width = 16
     config.conv1x1 = 64
-    config.stadardize = True
 
 if config.modality == 'MRI' and config.sequence == 't1':
     config.kl_weight = 0.0001
@@ -74,6 +78,13 @@ if config.modality == 'MRI' and config.sequence == 't1':
     config.latent_dim = 512
     config.width = 32
     config.conv1x1 = 64
+
+if config.modality == 'RF':
+    config.kl_weight = 0.001
+    config.num_layers = 6
+    config.latent_dim = 256
+    config.width = 16
+    config.conv1x1 = 32
 
 if config.backbone_arch == 'fanogan':
     config.latent_dim = 128
@@ -93,6 +104,8 @@ if config.modality == 'COL':
     from Models.CCD.datasets.COL_CCD import get_train_dataloader
 elif config.modality == 'MRI':
     from Models.CCD.datasets.MRI_CCD import get_train_dataloader
+elif config.modality == 'CT':
+    from Models.CCD.datasets.CT_CCD import get_train_dataloader
 elif config.modality == 'CXR':
     from Models.CCD.datasets.CXR_CCD import get_train_dataloader
 elif config.modality == 'RF':
@@ -139,8 +152,9 @@ def train():
     print('Starting pre-training with CCD...')
     for epoch in range(start_epoch, config.max_epochs):
 
-        # Adjust lr (cosine annealing)
-        lr = adjust_lr(lr, optimizer, epoch, config.max_epochs)
+        if config.lr_schedule:
+            # Adjust lr (cosine annealing)
+            lr = adjust_lr(lr, optimizer, epoch, config.max_epochs)
 
         for i, batch in enumerate(train_dataloader):
 

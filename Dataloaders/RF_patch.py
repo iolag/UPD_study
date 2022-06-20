@@ -1,5 +1,4 @@
 import os
-
 from typing import List, Tuple
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader

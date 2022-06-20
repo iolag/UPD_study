@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 import numpy as np
 from torch.utils.data import DataLoader
 import sys
-sys.path.append('/u/home/lagi/thesis')
+sys.path.append('/u/home/lagi/thesis/UAD_study')
 from DatasetPreprocessing.mylungCT import get_munich_preproc_splits
 from Utilities.utils import GenericDataloader
 from torch import Tensor
@@ -27,25 +27,22 @@ class NormalDataset(Dataset):
         """
         self.normal_slices = normal_slices
 
-        if "is_gan" not in config or config.is_gan in [None, False]:
-            self.is_gan = False
-        else:
-            self.is_gan = True
+        self.stadardize = config.stadardize
 
         mean = 0.0077
         std = 0.0270
 
-        self.stadardize = T.Normalize(mean, std)
+        self.norm = T.Normalize(mean, std)
 
     def __len__(self):
         return len(self.normal_slices)
 
     def __getitem__(self, idx) -> Tensor:
 
-        image = self.normal_slices[idx]
-        if not self.is_gan:
-            image = self.stadardize(image)
-        return image
+        img = self.normal_slices[idx]
+        if self.stadardize:
+            img = self.norm(img)
+        return img
 
 
 class AnomalDataset(Dataset):
@@ -62,11 +59,7 @@ class AnomalDataset(Dataset):
             config(Namespace): config object
 
         """
-
-        if "is_gan" not in config or config.is_gan in [None, False]:
-            self.is_gan = False
-        else:
-            self.is_gan = True
+        self.stadardize = config.stadardize
 
         self.images = torch.cat([anomal_slices_test, normal_slices_test])
         self.segmentations = torch.cat([anomal_masks_test, normal_masks_test])
@@ -74,7 +67,7 @@ class AnomalDataset(Dataset):
         mean = 0.0077
         std = 0.0270
 
-        self.stadardize = T.Normalize(mean, std)
+        self.norm = T.Normalize(mean, std)
 
     def __len__(self):
         return len(self.images)
@@ -83,15 +76,15 @@ class AnomalDataset(Dataset):
 
         img = self.images[idx]
         seg = self.segmentations[idx]
-        if not self.is_gan:
-            img = self.stadardize(img)
+        if self.stadardize:
+            img = self.norm(img)
 
         return img, seg.byte()
 
 
 def get_dataloaders(config: Namespace,
-                    train: bool = True) -> Union[DataLoader, Tuple[DataLoader,
-                                                                   DataLoader]]:
+                    train: bool = True, ccd: bool = False) -> Union[DataLoader, Tuple[DataLoader,
+                                                                                      DataLoader]]:
     """
     Return pytorch Dataloader instances.
 
@@ -116,7 +109,8 @@ def get_dataloaders(config: Namespace,
 
     # calculate dataset split index
     split_idx = int(len(normal_slices_train) * config.normal_split)
-
+    if ccd:
+        return normal_slices_train
     if split_idx != len(normal_slices_train):
 
         trainset = NormalDataset(normal_slices_train[:split_idx], config)

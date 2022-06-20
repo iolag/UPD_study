@@ -8,7 +8,7 @@ from VAEmodel import VAE
 from time import time
 from torch import Tensor
 from typing import Tuple
-from Utilities.evaluate import evaluate
+from Utilities.evaluate import evaluate  # eval_reconstruction_based
 from Utilities.common_config import common_config
 from Utilities.utils import (save_model, seed_everything,
                              load_data, load_pretrained,
@@ -47,10 +47,6 @@ def get_config():
 config = get_config()
 
 # Specific modality params (Default above are for MRI t2)
-
-if config.modality != 'MRI':
-    config.max_steps = 10000
-
 if config.modality == 'CXR':
     config.kl_weight = 0.0001
     config.num_layers = 6
@@ -65,6 +61,13 @@ if config.modality == 'COL':
     config.width = 16
     config.conv1x1 = 64
 
+if config.modality == 'RF':
+    config.kl_weight = 0.001
+    config.num_layers = 6
+    config.latent_dim = 256
+    config.width = 16
+    config.conv1x1 = 32
+
 if config.modality == 'MRI' and config.sequence == 't1':
     config.kl_weight = 0.0001
     config.num_layers = 6
@@ -72,12 +75,6 @@ if config.modality == 'MRI' and config.sequence == 't1':
     config.width = 32
     config.conv1x1 = 64
 
-if config.modality == 'RF':
-    config.kl_weight = 0.001
-    config.num_layers = 6
-    config.latent_dim = 256
-    config.width = 16
-    config.conv1x1 = 32
 
 # get logger and naming string
 config.method = 'VAE'
@@ -89,7 +86,6 @@ misc_settings(config)
 seed_everything(42)
 
 train_loader, val_loader, big_testloader, small_testloader = load_data(config)
-
 
 """"""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
 # Reproducibility
@@ -134,23 +130,17 @@ def vae_val_step(input, return_loss: bool = True) -> Tuple[dict, Tensor]:
 
     loss_dict = model.loss_function(input, input_recon, mu, logvar)  # VAE Loss
 
+    input_recon = restore(input)
+
     # Anomaly map
     if config.ssim_eval:
         anomaly_map = ssim_map(input_recon, input)
     else:
         anomaly_map = (input - input_recon).abs().mean(1, keepdim=True)
-
-    # anomaly_map = input
     # for MRI, RF apply brainmask
-    if config.modality in ['MRI', 'CT']:
+    if config.modality in ['MRI', 'CT', 'MRInoram']:
         mask = torch.stack([inp > inp.min() for inp in input])
-
-        # scale anomaly maps by substracting the minimum non-background value for better visualisation
-        # anomaly_map *= mask
-        # mins = [(map[msk].min()) for map, msk in zip(anomaly_map, mask)]
-        # anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         anomaly_map *= mask
-        #
         input_recon *= mask
         anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
 
@@ -162,10 +152,13 @@ def vae_val_step(input, return_loss: bool = True) -> Tuple[dict, Tensor]:
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
 
+    # assert not torch.isnan(anomaly_score).any()
+    # assert not torch.isnan(input_recon).any()
+    # assert not torch.isnan(anomaly_map).any()
     if return_loss:
         return loss_dict, anomaly_map, anomaly_score, input_recon
     else:
-        return anomaly_map, anomaly_score, input_recon
+        return anomaly_map.detach(), anomaly_score.detach(), input_recon.detach()
 
 
 def validate(val_loader, config) -> None:
@@ -223,7 +216,6 @@ def train(model):
 
             config.step += 1
             input = input.to(config.device)
-
             # Train step
             loss_dict = vae_train_step(input)
 
@@ -267,9 +259,76 @@ def train(model):
         print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
 
 
+def total_variation(img):
+    bs_img, c_img, h_img, w_img = img.size()
+    tv_h = torch.pow(img[:, :, 1:, :] - img[:, :, :-1, :], 2).sum()
+    tv_w = torch.pow(img[:, :, :, 1:] - img[:, :, :, :-1], 2).sum()
+    return (tv_h + tv_w) / (bs_img * c_img * h_img * w_img)
+
+
+from tqdm import tqdm
+
+
+def determine_best_lambda():
+    lambdas = np.arange(20) / 10.0
+    mean_errors = []
+    for tv_lambda in tqdm(lambdas, desc='Calculating optimal lamda'):
+        errors = []
+        for input in val_loader:
+            input = input.to(config.device)
+            input.requires_grad = True
+            restored = input.clone()
+            for step in range(config.num_restoration_steps):
+                reconstruction, mu, logvar = model(restored)
+                tv_loss = tv_lambda * total_variation(restored - input)
+                # get ELBO(restoration)
+                elbo = model.loss_function(restored, reconstruction, mu, logvar)['loss']
+                grad = torch.autograd.grad((tv_loss + elbo), restored, retain_graph=True)[0]
+                grad = torch.clamp(grad, -50., 50.)
+                restored -= config.restore_lr * grad
+            errors.append(torch.abs(input - restored).mean())
+        mean_error = torch.mean(torch.tensor(errors))
+        mean_errors.append(mean_error)
+
+    config.tv_lambda = lambdas[mean_errors.index(min(mean_errors))]
+    print(f'Best lambda: { config.tv_lambda}')
+
+
+def restore(input):
+    input = input.to(config.device)
+    input.requires_grad = True
+    restored = input.clone()
+    for step in range(config.num_restoration_steps):
+        reconstruction, mu, logvar = model(restored)
+        tv_loss = config.tv_lambda * total_variation(restored - input)
+        elbo = model.loss_function(restored, reconstruction, mu, logvar)["loss"]
+        grad = torch.autograd.grad((tv_loss + elbo), restored, retain_graph=True)[0]
+        grad = torch.clamp(grad, -50., 50.)
+        if step % 100 == 0:
+            print(tv_loss.mean().item(), 'tv_loss', elbo.mean().item(), 'elbo loss')
+
+        restored -= config.restore_lr * grad
+    return restored
+
+
 if __name__ == '__main__':
     if config.eval:
         print('Evaluating model...')
+        config.num_restoration_steps = 500
+        config.restore_lr = 1e3
+        config.tv_lambda = -1
+        if config.modality == 'CXR' and not config.load_pretrained:
+            config.tv_lambda = 1.5
+        if config.modality == 'CXR' and config.load_pretrained:
+            config.tv_lambda = 1.3
+        if config.modality == 'MRI' and config.load_pretrained:
+            config.tv_lambda = 1.9
+        if config.modality == 'MRI':
+            config.tv_lambda = 1.2
+        if config.modality == 'RF':
+            config.tv_lambda = 1.2
+        if config.tv_lambda < 0:
+            determine_best_lambda()
         evaluate(config, big_testloader, vae_val_step, val_loader)
 
     else:

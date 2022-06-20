@@ -1,11 +1,12 @@
-import os
+
 import numpy as np
 import torch
-from PIL import Image
 from torch.utils.data import Dataset
-from torchvision import transforms as T
-from augmentations import Rotation, Cutout1, Cutout, Gaussian_noise, CutPerm
+from augmentations import Cutout1, CutPerm, Rotation, Cutout, Gaussian_noise
 import torchvision.transforms as transforms
+import sys
+sys.path.append('/u/home/lagi/thesis/UAD_Study')
+from Dataloaders.CT import get_dataloaders
 
 
 class CCD_Dataset(Dataset):
@@ -23,21 +24,17 @@ class CCD_Dataset(Dataset):
 
         self.data = []
 
-        self.imgs = np.asarray(get_files(config))
+        # We first resize the image to int(config.image_size // 0.875). It will eventually be resized
+        # to config.image_size with the random_crop later in the pipeline
+        backup = config.image_size
+        config.image_size = int(config.image_size // 0.875)
+        self.imgs = get_dataloaders(config, ccd=True)
 
-        # image will be resized later to config.image_size with RandomResizedCrop
-        img_size = int(config.image_size // 0.875)
+        # return to original config.image_size, because vae model needs it to initialize
+        config.image_size = backup
 
-        self.initial_transform = T.Compose([
-            T.Resize((img_size, img_size), T.InterpolationMode.LANCZOS),
-
-            hide_blue_box(img_size),
-            T.ToTensor(),
-        ])
-
-        for index in range(len(self.imgs)):
-            img = Image.open(self.imgs[index])
-            img = self.initial_transform(img)
+        for img in self.imgs:
+            img = torch.FloatTensor(img)
             self.data.append(img)
 
         self.data = torch.stack(self.data)
@@ -53,7 +50,8 @@ class CCD_Dataset(Dataset):
 
             tmp = self.data[i].unsqueeze(0)
             images = torch.cat([strong_aug(tmp, k)
-                               for k in range(self.num_of_strong_aug_classes)])  # [4,c,h,w]
+                                for k in range(self.num_of_strong_aug_classes)])  # [4,c,h,w]
+
             # shift_labels = [0., 1., 2., 3.]
             shift_labels = np.asarray([1. * k for k in range(self.num_of_strong_aug_classes)])
 
@@ -62,6 +60,7 @@ class CCD_Dataset(Dataset):
 
         self.data = torch.cat(self.augdata, axis=0)  # [samples*4,c,h,w]
 
+        # self.data = self.data.transpose((0, 2, 3, 1))
         self.labels = np.concatenate(self.labels, axis=0)
 
     def __getitem__(self, idx):
@@ -71,6 +70,7 @@ class CCD_Dataset(Dataset):
         label = torch.as_tensor(label).long()
         if img.shape[0] == 1:
             img = img.repeat(3, 1, 1)
+
         if self.transform is not None:
             img = self.transform(img)
 
@@ -112,12 +112,10 @@ def get_train_dataloader(config):
 
     # SimCLR transforms
     transform = transforms.Compose([
-        transforms.RandomResizedCrop(size=config.image_size, scale=[0.1, 1.0]),
+        transforms.RandomResizedCrop(size=config.image_size, scale=[0.2, 1.0]),
         transforms.RandomHorizontalFlip(),
         transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
         transforms.RandomGrayscale(0.2),
-        # transforms.ToTensor(),
-        # transforms.Normalize(**p['augmentation_kwargs']['normalize']),
         Cutout1(n_holes=1, length=75, random=True)
     ])
 
@@ -125,51 +123,6 @@ def get_train_dataloader(config):
 
     dataset = AugmentedDataset(dataset)
 
-    return torch.utils.data.DataLoader(dataset,
-                                       num_workers=8,
-                                       batch_size=32,
-                                       pin_memory=True,
-                                       drop_last=True,
-                                       shuffle=True)
-
-
-class hide_blue_box(torch.nn.Module):
-
-    """
-    Crop the bluebox appearing in most Colonoscopy images.
-    Return cropped img.
-
-    The indexes to hide the blue boxes are a rough estimate
-    after img inspection.
-    """
-
-    def __init__(self, image_size):
-        super().__init__()
-        self.image_size = image_size
-        self.h_idx = 166 * image_size // 256
-        self.w_idx = 90 * image_size // 256
-
-    def forward(self, img):
-
-        mask = np.ones((self.image_size, self.image_size, 3))
-        # self.h_idx
-        mask[self.h_idx:, 0: self.w_idx, :] = 0
-        cropped_image = Image.fromarray(np.uint8(np.asarray(img) * mask))
-
-        return cropped_image
-
-
-def get_files(config, train: bool = True):
-
-    pathfile = open(os.path.join(config.datasets_dir,
-                                 'Colonoscopy',
-                                 'labeled-images',
-                                 'lower-gi-tract',
-                                 'normal_image_paths.csv'))
-
-    paths = pathfile.read().splitlines()
-
-    for idx, path in enumerate(paths):
-        paths[idx] = os.path.join(config.datasets_dir, path)
-
-    return paths[300:]
+    return torch.utils.data.DataLoader(dataset, num_workers=config.num_workers,
+                                       batch_size=32, pin_memory=True,
+                                       drop_last=True, shuffle=True)

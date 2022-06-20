@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from augmentations import Cutout1, CutPerm  # ,Rotation,  Cutout, Gaussian_noise
+from augmentations import Cutout1, CutPerm, Rotation, Cutout, Gaussian_noise
 import torchvision.transforms as transforms
 import sys
 sys.path.append('/u/home/lagi/thesis')
@@ -12,7 +12,16 @@ from DatasetPreprocessing.mri import get_camcan_slices
 class CCD_Dataset(Dataset):
     def __init__(self, config, transform=None):
         self.transform = transform
-        strong_aug = CutPerm()
+
+        if config.cls_augmentation == 'noise':
+            strong_aug = Gaussian_noise()
+        elif config.cls_augmentation == 'cutperm':
+            strong_aug = CutPerm()
+        elif config.cls_augmentation == 'cutout':
+            strong_aug = Cutout()
+        elif config.cls_augmentation == 'rotation':
+            strong_aug = Rotation()
+
         self.data = []
 
         # We first resize the image to int(config.image_size // 0.875). It will eventually be resized

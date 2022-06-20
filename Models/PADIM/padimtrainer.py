@@ -46,6 +46,8 @@ if config.eval:
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
 if config.modality == 'MRI' and not config.eval:
     config.normal_split = 0.2
+if config.modality == 'RF' and not config.eval:
+    config.normal_split = 0.7
 
 # specific seed for deterministic dataloader creation
 seed_everything(42)
@@ -246,7 +248,6 @@ def test(dataloader, normal_test: bool = False):
         # apply gaussian smoothing on the score map
         for i in range(anomaly_map.shape[0]):
             anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=4)  # [samples, h , w]
-        # https://pytorch.org/vision/stable/generated/torchvision.transforms.GaussianBlur.html
 
         # noticed that when a single sample batch occures, anomaly_map loses its batch dim somewhere above
         if len(anomaly_map.shape) == 2:
@@ -274,7 +275,7 @@ def test(dataloader, normal_test: bool = False):
     #
 
     # apply brainmask for MRI, RF
-    if config.modality == 'MRI':
+    if config.modality in ['MRI', 'CT']:
         masks = [inp > inp.min() for inp in inputs]
         anomaly_maps = [map * mask for map, mask in zip(anomaly_maps, masks)]
         anomaly_scores = [torch.Tensor([map[inp > inp.min()].mean()

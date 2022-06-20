@@ -5,19 +5,16 @@ import numpy as np
 import torch
 from collections import defaultdict
 from time import time
-import wandb
 from torch import Tensor
 from typing import Tuple
 from GANmodel import fAnoGAN, calc_gradient_penalty
 from torch.nn import functional as F
-from Utilities.evaluate import eval_reconstruction_based
+from Utilities.evaluate import evaluate
 from Utilities.common_config import common_config
-from Utilities.utils import (set_requires_grad,
-                             seed_everything,
-                             load_data,
-                             misc_settings,
-                             str_to_bool,
-                             ssim_map)
+from Utilities.utils import (set_requires_grad, load_pretrained,
+                             seed_everything, load_data, load_model,
+                             misc_settings, str_to_bool,
+                             ssim_map, log)
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
@@ -35,33 +32,32 @@ def get_config():
                         help='Feature reconstruction weight during encoder training')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='Weight decay')
     parser.add_argument('--max_steps_gan', type=int, default=30000, help='Number of training steps')
-    parser.add_argument('--max_steps_encoder', type=int, default=20000, help='Number of training steps')
+    parser.add_argument('--max_steps_encoder', type=int, default=10000, help='Number of training steps')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
 
     # Model settings : for consistency with the original f-anogan method
-    # dim and latent_dim should be the same for the Encoder and GAN discriminator
+    # dim and latent_dim are the same for the Encoder and Discriminator
     parser.add_argument('--dim', type=int, default=64, help='Model width')
     parser.add_argument('--latent_dim', type=int, default=128, help='Size of the latent space')
     parser.add_argument('--dropout', type=float, default=0.0, help='Dropout rate, A.1 appendix of paper')
     parser.add_argument('--critic_iters', type=int, default=1, help='Num of critic iters per generator iter')
     # Save, Load, Train part settings
-    parser.add_argument('--train_encoder', type=str_to_bool, default=False, help='enable encoder training')
-    parser.add_argument('--train_gan', type=str_to_bool, default=False, help='enable gan training')
+    parser.add_argument('--train_encoder', '-te', type=str_to_bool,
+                        default=False, help='enable encoder training')
+    parser.add_argument('--train_gan', '-tg', type=str_to_bool, default=False, help='enable gan training')
     parser.add_argument('--gan_iter', type=str, default="", help='Gan num of iters')
+
+    parser.add_argument('--enc_val_frequency', '-evf', type=int, default=1000, help='validation frequency')
+    parser.add_argument('--gan_val_frequency', '-gvf', type=int, default=1000, help='validation frequency')
 
     return parser.parse_args()
 
 
 config = get_config()
 
-msg = "num_images_log should be lower or equal to batch size"
-assert (config.batch_size >= config.num_images_log), msg
-
-# Select training device
-config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-# get logger and naming string
 config.method = 'f-anoGAN'
+
+# general setup
 misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
@@ -84,22 +80,33 @@ optimizer_g = torch.optim.Adam(model.G.parameters(), lr=config.lr,
                                betas=(0., 0.9), weight_decay=config.weight_decay)
 optimizer_d = torch.optim.Adam(model.D.parameters(), lr=config.lr_d,
                                betas=(0., 0.9), weight_decay=config.weight_decay)
-optimizer_e = torch.optim.RMSprop(model.E.parameters(), lr=config.lr_e, weight_decay=config.weight_decay)
+optimizer_e = torch.optim.RMSprop(model.E.parameters(), lr=config.lr_e,
+                                  weight_decay=config.weight_decay)
 
 if config.eval:
-    model.G.load_state_dict(torch.load(f'saved_models/{config.modality}/{naming_str}_netG.pth'))
-    model.D.load_state_dict(torch.load(f'saved_models/{config.modality}/{naming_str}_netD.pth'))
-    model.E.load_state_dict(torch.load(f'saved_models/{config.modality}/{naming_str}_netE.pth'))
+    g, d, e = load_model(config)
+    model.G.load_state_dict(g)
+    model.D.load_state_dict(d)
+    model.E.load_state_dict(e)
     print('Saved model loaded.')
 
+# For when we train WGAN and Encoder in two different runs
+if not config.train_gan and not config.eval:
+    g, d = load_model(config)
+    model.G.load_state_dict(g)
+    model.D.load_state_dict(d)
+    print('Saved WGAN loaded.')
+
 if config.load_pretrained and not config.eval:
-    config.arch = 'vae'
-    model = load_pretrained(model, config)
+
+    config.arch = 'fanogan'
+    model.E = load_pretrained(model.E, config)
+
 
 """"""""""""""""""""""""""""""""" GAN Training """""""""""""""""""""""""""""""""
 
 
-def train_step_gan(model, optimizer_g, optimizer_d, x_real, iter) -> Tuple[dict, Tensor]:
+def train_step_gan(x_real) -> Tuple[dict, Tensor]:
 
     model.train()
 
@@ -152,7 +159,7 @@ def train_step_gan(model, optimizer_g, optimizer_d, x_real, iter) -> Tuple[dict,
     }, x_fake
 
 
-def val_step_gan(model, x_real) -> Tuple[dict, Tensor]:
+def val_step_gan(x_real) -> Tuple[dict, Tensor]:
     model.eval()
     set_requires_grad(model.D, False)
     set_requires_grad(model.G, False)
@@ -183,7 +190,7 @@ def val_step_gan(model, x_real) -> Tuple[dict, Tensor]:
     }, x_fake
 
 
-def validate_gan(model, i_iter, config) -> None:
+def validate_gan() -> None:
 
     val_losses = defaultdict(list)
     i_val_step = 0
@@ -191,7 +198,7 @@ def validate_gan(model, i_iter, config) -> None:
     for x_real in val_loader:
         x_real = x_real.to(config.device)
 
-        loss_dict, _ = val_step_gan(model, x_real)
+        loss_dict, _ = val_step_gan(x_real)
 
         for k, v in loss_dict.items():
             val_losses[k].append(v)
@@ -207,91 +214,68 @@ def validate_gan(model, i_iter, config) -> None:
     print(log_msg)
 
     # Log to wandb
-    logger.log(
-        {f'val/{k}': np.mean(v)
-         for k, v in val_losses.items()},
-        step=i_iter
-    )
+    log({f'val/{k}': np.mean(v) for k, v in val_losses.items()}, config)
 
 
-def train_gan(model, config):
+def train_gan():
 
     print('Starting training GAN...')
-    i_iter = 0
     i_epoch = 0
     train_losses = defaultdict(list)
-
     t_start = time()
 
     while True:
         for x_real in train_loader:
-            i_iter += 1
+            config.step += 1
             x_real = x_real.to(config.device)
-            loss_dict, x_fake = train_step_gan(model, optimizer_g, optimizer_d, x_real, i_iter)
+            loss_dict, x_fake = train_step_gan(x_real)
 
             # Add to losses
             for k, v in loss_dict.items():
                 train_losses[k].append(v)
 
-            # log some real images
-            if i_iter < 4:
-                real_images = list(x_real[:config.num_images_log].cpu().detach())
-                real_images = [wandb.Image(image) for image in real_images]
+            # log some real images for reference
+            if config.step < 4:
 
-                logger.log({
-                    'train/real images': real_images
-                }, step=i_iter)
+                log({'train/real images': x_real}, config)
 
-            if i_iter % config.log_frequency == 0:
+            if config.step % config.log_frequency == 0:
                 # Print training loss
                 log_msg = " - ".join([f'{k}: {np.mean(v):.4f}' for k,
                                       v in train_losses.items()])
-                log_msg = f"Iteration {i_iter} - " + log_msg
+                log_msg = f"Iteration {config.step} - " + log_msg
                 log_msg += f" - time: {time() - t_start:.2f}s"
+
                 print(log_msg)
 
                 # Log to wandb
-                logger.log(
-                    {f'train/{k}': np.mean(v)
-                     for k, v in train_losses.items()},
-                    step=i_iter
-                )
+                log({f'train/{k}': np.mean(v)
+                     for k, v in train_losses.items()}, config)
 
-                fake_images = list(x_fake[:config.num_images_log].cpu().detach())
-                fake_images = [wandb.Image(image) for image in fake_images]
-
-                logger.log({
-                    'train/fake images': fake_images
-                }, step=i_iter)
+                log({'train/fake images': x_fake}, config)
 
                 # Reset loss dict
                 train_losses = defaultdict(list)
 
             # validate if normal_split != 1.0 so normal validation set is given
-            if i_iter % config.gan_val_frequency == 0 and config.normal_split != 1.0:
-                validate_gan(model, i_iter, config)
+            if config.step % config.gan_val_frequency == 0:
+                validate_gan()
 
-            if i_iter % config.save_frequency == 0 and i_iter != 0:
-                torch.save(model.D.state_dict(),
-                           f'saved_models/{config.modality}/{naming_str}_netD_{i_iter}.pth')
-                torch.save(model.G.state_dict(),
-                           f'saved_models/{config.modality}/{naming_str}_netG_{i_iter}.pth')
-
-            if i_iter >= config.max_steps_gan:
+            if config.step >= config.max_steps_gan:
                 print(
                     f'Reached {config.max_steps_gan} iterations. Finished training GAN.')
-                torch.save(model.D.state_dict(), f'saved_models/{config.modality}/{naming_str}_netD.pth')
-                torch.save(model.G.state_dict(), f'saved_models/{config.modality}/{naming_str}_netG.pth')
+                torch.save(model.D.state_dict(), f'saved_models/{config.modality}/{config.name}_netD.pth')
+                torch.save(model.G.state_dict(), f'saved_models/{config.modality}/{config.name}_netG.pth')
                 return
 
         i_epoch += 1
-        print(f'Finished epoch {i_epoch}, ({i_iter} iterations)')
+        print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
 
 
 """"""""""""""""""""""""""""""" Encoder Training """""""""""""""""""""""""""""""
 
 
-def train_step_encoder(model, optimizer_e, x, config):
+def train_step_encoder(x):
     model.train()
     optimizer_e.zero_grad()
 
@@ -316,13 +300,10 @@ def train_step_encoder(model, optimizer_e, x, config):
     }, x_rec
 
 
-def train_encoder(model, config):
+def train_encoder():
     print('Starting training Encoder...')
-    i_iter = 0
+    config.step = 0
     i_epoch = 0
-    if config.load_saved:
-        i_iter = config.saved_iter
-
     train_losses = defaultdict(list)
 
     # Generator and discriminator don't require gradients
@@ -333,56 +314,46 @@ def train_encoder(model, config):
 
     while True:
         for x in train_loader:
-            i_iter += 1
+            config.step += 1
             x = x.to(config.device)
-            loss_dict, x_rec = train_step_encoder(model, optimizer_e, x, config)
+            loss_dict, x_rec = train_step_encoder(x)
 
             # Add to losses
             for k, v in loss_dict.items():
                 train_losses[k].append(v)
 
-            if i_iter % config.log_frequency == 0:
+            if config.step % config.log_frequency == 0:
                 # Print training loss
                 log_msg = " - ".join([f'{k}: {np.mean(v):.4f}' for k,
                                       v in train_losses.items()])
-                log_msg = f"Iteration {i_iter} - " + log_msg
+                log_msg = f"Iteration {config.step} - " + log_msg
                 log_msg += f" - time: {time() - t_start:.2f}s"
                 print(log_msg)
 
                 # Log to wandb
-
-                logger.log(
-                    {f'train/{k}': np.mean(v)
+                log({f'train/{k}': np.mean(v)
                      for k, v in train_losses.items()},
-                    step=i_iter
-                )
+                    config)
 
-                # Reset
+                # Reset loss dict
                 train_losses = defaultdict(list)
 
-            if i_iter % config.enc_val_frequency == 0:
-                _ = validate_encoder(model, val_loader, i_iter, config)
+            if config.step % config.enc_val_frequency == 0:
+                _ = validate_encoder()
 
-            if i_iter % config.anom_val_frequency == 0:
-                eval_reconstruction_based(model, small_testloader, i_iter, val_step_encoder, logger, config)
+            if config.step % config.anom_val_frequency == 0:
+                evaluate(config, small_testloader, val_step_encoder, val_loader)
 
-            if i_iter % config.save_frequency == 0 and i_iter != 0:
-                torch.save(model.E.state_dict(),
-                           f'saved_models/{config.modality}/{naming_str}_netE_{i_iter}.pth')
-
-            if i_iter >= config.max_steps_encoder:
-                print(
-                    f'Reached {config.max_steps_encoder} iterations. Finished training encoder.')
-                torch.save(model.E.state_dict(),
-                           f'saved_models/{config.modality}/{naming_str}feat_netE.pth')
-
+            if config.step >= config.max_steps_encoder:
+                print(f'Reached {config.max_steps_encoder} iterations. Finished training encoder.')
+                torch.save(model.E.state_dict(), f'saved_models/{config.modality}/{config.name}_netE.pth')
                 return
 
         i_epoch += 1
-        print(f'Finished epoch {i_epoch}, ({i_iter} iterations)')
+        print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
 
 
-def val_step_encoder(model, input, config, return_loss: bool = True):
+def val_step_encoder(input, return_loss: bool = True):
     model.eval()
     with torch.no_grad():
 
@@ -411,23 +382,38 @@ def val_step_encoder(model, input, config, return_loss: bool = True):
 
         # Anomaly map
         if config.ssim_eval:
-            ssim_map(input, input_recon)
+            anomaly_map = ssim_map(input, input_recon)
         else:
             anomaly_map = (input - input_recon).abs().mean(1, keepdim=True)
 
-        if config.modality == 'MRI':
+        if config.modality in ['MRI', 'CT']:
             mask = torch.cat([inp > inp.min() for inp in input]).unsqueeze(1)
+            anomaly_map *= mask
+        elif config.modality in ['RF']:
+            mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
             anomaly_map *= mask
 
         # Anomaly score
-        img_diff = input - input_recon
+        if config.ssim_eval:
+            img_diff = ssim_map(input, input_recon)
+        else:
+            img_diff = (input - input_recon).pow(2)
 
-        if config.modality == 'MRI':
+        if config.modality in ['MRI', 'CT']:
+            mask = torch.cat([inp > inp.min() for inp in input]).unsqueeze(1)
             img_diff *= mask
+            img_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(img_diff, input)])
 
-        img_diff = img_diff.pow(2).mean((1, 2, 3))
+        elif config.modality in ['RF']:
+            mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
+            img_diff *= mask
+            img_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
+                                     for map, inp in zip(img_diff, input)])
+        else:
+            img_score = torch.tensor([map.mean() for map in img_diff])
+
         feat_diff = (x_feats - x_rec_feats).pow(2).mean((1))
-        anomaly_score = img_diff + config.feat_weight * feat_diff
+        anomaly_score = img_score.to(config.device) + config.feat_weight * feat_diff
 
     if return_loss:
         return loss_dict, anomaly_map, anomaly_score, input_recon
@@ -435,7 +421,7 @@ def val_step_encoder(model, input, config, return_loss: bool = True):
         return anomaly_map, anomaly_score, input_recon
 
 
-def validate_encoder(model, val_loader, i_iter, config) -> None:
+def validate_encoder() -> None:
 
     val_losses = defaultdict(list)
     i_val_step = 0
@@ -444,8 +430,7 @@ def validate_encoder(model, val_loader, i_iter, config) -> None:
         i_val_step += 1
         input = input.to(config.device)
 
-        loss_dict, anomaly_map, _, input_recon = val_step_encoder(
-            model, input, config)
+        loss_dict, anomaly_map, _, input_recon = val_step_encoder(input)
 
         for k, v in loss_dict.items():
             val_losses[k].append(v)
@@ -459,44 +444,33 @@ def validate_encoder(model, val_loader, i_iter, config) -> None:
     print(f'\n{log_msg}\n')
 
     # Log to wandb
-    logger.log(
+    log(
         {f'val/{k}': np.mean(v)
          for k, v in val_losses.items()},
-        step=i_iter
+        config
     )
 
     # log images and residuals
-    input_images = list(input[:config.num_images_log].cpu())
-    input_images = [wandb.Image(image) for image in input_images]
-
-    reconstructions = list(input_recon[:config.num_images_log].cpu())
-    reconstructions = [wandb.Image(image) for image in reconstructions]
-
-    residuals = list(anomaly_map[:config.num_images_log].cpu())
-    residuals = [wandb.Image(image) for image in residuals]
-
-    logger.log({
-        'val/input': input_images,
-        'val/recon': reconstructions,
-        'val/res': residuals,
-    }, step=i_iter)
+    log({
+        'val/input': input,
+        'val/recon': input_recon,
+        'val/res': anomaly_map,
+    }, config)
 
     return np.mean(val_losses['loss_encoder'])
 
 
 if __name__ == '__main__':
     if config.eval:
-        config.num_images_log = 100
         print('Evaluating model...')
-        eval_reconstruction_based(model, big_testloader, 0, val_step_encoder, logger, config)
+        evaluate(config, big_testloader, val_step_encoder, val_loader)
 
     if config.train_gan:
-        train_gan(model, config)
+        train_gan()
+
+    if config.train_gan and config.train_encoder:
+        # reinit logger if we train both gan and enc in a single run
+        misc_settings(config)
 
     if config.train_encoder:
-        if not config.train_gan:
-            model.G.load_state_dict(torch.load(f'saved_models/{config.modality}/{naming_str}_netG.pth'))
-            model.D.load_state_dict(torch.load(f'saved_models/{config.modality}/{naming_str}_netD.pth'))
-            print('Saved GAN model loaded.')
-
-        train_encoder(model, config)
+        train_encoder()

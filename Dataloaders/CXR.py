@@ -215,14 +215,15 @@ class AnomalDataset(Dataset):
         image = Image.open(self.images[idx])
         image = self.image_transforms(image)
 
-        # for compatibility, create image like pixel masks to provide as labels
-        mask = torch.zeros_like(image)
-
         if self.stadardize:
             image = self.norm(image)
 
+        # for compatibility, create fake image masks to provide as labels
+        # negative = zero tensor, positive = Ident tensor
         if self.labels[idx] != 0:
             mask = torch.eye(image.shape[-1]).unsqueeze(0)
+        else:
+            mask = torch.zeros_like(image)
 
         return image, mask
 

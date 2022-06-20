@@ -242,18 +242,18 @@ class Discriminator(nn.Module):
         dim = config.dim if 'dim' in config else DIM
         img_channels = config.img_channels if 'img_channels' in config else 1
         img_size = config.img_size if 'img_size' in config else 128
-        # img_size = config.img_size if 'img_size' in config else 64
+        # img_size = config.img_size if 'img_size' in config else 64C
 
         # Define layers
         self.conv1 = Conv2d(img_channels, dim, kernel_size=3)
 
         resblock = partial(ResidualBlock, resample='down', norm_layer="layernorm")
         # For 128x128
-        self.res1 = resblock(1 * dim, 2 * dim, kernel_size=3, hw=img_size)
-        self.res2 = resblock(2 * dim, 4 * dim, kernel_size=3, hw=img_size // 2)
-        self.res3 = resblock(4 * dim, 4 * dim, kernel_size=3, hw=img_size // 4)
-        self.res4 = resblock(4 * dim, 8 * dim, kernel_size=3, hw=img_size // 8)
-        self.res5 = resblock(8 * dim, 8 * dim, kernel_size=3, hw=img_size // 16)
+        self.rb1 = resblock(1 * dim, 2 * dim, kernel_size=3, hw=img_size)
+        self.rb2 = resblock(2 * dim, 4 * dim, kernel_size=3, hw=img_size // 2)
+        self.rb3 = resblock(4 * dim, 4 * dim, kernel_size=3, hw=img_size // 4)
+        self.rb4 = resblock(4 * dim, 8 * dim, kernel_size=3, hw=img_size // 8)
+        self.rb5 = resblock(8 * dim, 8 * dim, kernel_size=3, hw=img_size // 16)
 
         # For 64x64
         # self.rb1 = resblock(1 * dim, 2 * dim, kernel_size=3, hw=img_size)
@@ -271,11 +271,11 @@ class Discriminator(nn.Module):
 
         out = inp  # [b, img_channels, 128, 128]
         out = self.conv1(out)  # [b, 1*dim, 128, 128]
-        out = self.res1(out)  # [b, 2*dim, 64, 64]
-        out = self.res2(out)
-        out = self.res3(out)
-        out = self.res4(out)
-        out = self.res5(out)  # [b, 8*dim, 4, 4]
+        out = self.rb1(out)  # [b, 2*dim, 64, 64]
+        out = self.rb2(out)
+        out = self.rb3(out)
+        out = self.rb4(out)
+        out = self.rb5(out)  # [b, 8*dim, 4, 4]
         out = out.view(out.shape[0], -1)  # [b, 8*dim*4*4] (dim after ln1 of G)
         return out
 
