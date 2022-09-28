@@ -1,5 +1,6 @@
 import sys
-sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
+import os
+sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
 from argparse import ArgumentParser
 from time import time
 import numpy as np
@@ -11,6 +12,7 @@ from Models.DFR.dfr_utils import estimate_latent_channels
 import wandb
 import torch.nn as nn
 from Utilities.common_config import common_config
+from scipy.ndimage import gaussian_filter
 from Utilities.evaluate import evaluate
 from Utilities.utils import (save_model, seed_everything,
                              load_data, load_pretrained,
@@ -45,10 +47,7 @@ def get_config():
 
 
 config = get_config()
-
 config.method = 'DFR'
-
-# general setup
 misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
@@ -58,7 +57,6 @@ seed_everything(42)
 
 train_loader, val_loader, big_testloader, small_testloader = load_data(config)
 
-# small_testloader = big_testloader
 
 """"""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
 # Reproducibility
@@ -72,7 +70,12 @@ if config.arch == 'vgg19':
 elif config.arch in ['wide_resnet50_2', 'resnet50']:
     from DFRmodelWR50 import Extractor, FeatureAE, _set_requires_grad_false
 
-
+if config.modality == 'CXR':
+    config.latent_channels = 474
+if config.modality == 'MRI' and config.sequence == 't2':
+    config.latent_channels = 162
+if config.modality == 'MRI' and config.sequence == 't1':
+    config.latent_channels = 191
 # this won't work with cfg.limited_metrics true
 if config.latent_channels is None:
     print('Estimating number of required latent channels')
@@ -136,6 +139,13 @@ if config.eval:
     model.load_state_dict(load_model(config))
     print('Saved model loaded.')
 
+if config.speed_benchmark:
+    from torchinfo import summary
+    a = summary(model, (16, 3, 128, 128), verbose=0)
+    params = a.total_params
+    macs = a.total_mult_adds
+    print('Number of Million parameters: ', params / 1e06)
+    print('Number of GMACs: ', macs / 1e09)
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
 
 
@@ -159,24 +169,62 @@ def val_step(input, return_loss: bool = True) -> Tuple[float, Tensor, Tensor]:
         map_small = torch.mean((feats - rec) ** 2, dim=1, keepdim=True)
         loss = map_small.mean()
 
-        anomaly_map = F.interpolate(map_small, input.shape[-2:], mode='bilinear', align_corners=True)
-
         if config.ssim_eval:
             anom_map_small = ssim_map(feats, rec)
             anomaly_map = F.interpolate(anom_map_small, input.shape[-2:], mode='bilinear', align_corners=True)
+
+            if config.gaussian_blur:
+                anomaly_map = anomaly_map.cpu().numpy()
+                for i in range(anomaly_map.shape[0]):
+                    anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=4)
+                anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
+
         else:
             anomaly_map = F.interpolate(map_small, input.shape[-2:], mode='bilinear', align_corners=True)
+            if config.gaussian_blur:
+                anomaly_map = anomaly_map.cpu().numpy()
+                for i in range(anomaly_map.shape[0]):
+                    anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=4)
+                anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
+            # anomaly_map = torch.zeros(feats[0].shape[0], 1, config.image_size,
+            #                           config.image_size).to(config.device)
+            # for i in range(len(feats)):
+            #     enc_feat_map = feats[i]
+            #     dec_feat_map = rec[i]
+            #     print(enc_feat_map.shape)
+            #     a_map = 1 - F.cosine_similarity(enc_feat_map, dec_feat_map)
+            #     a_map = torch.unsqueeze(a_map, dim=1)
+            #     a_map = F.interpolate(a_map, size=config.image_size, mode='bilinear', align_corners=True)
+            #     anomaly_map += a_map
 
     if config.modality in ['MRI', 'CT']:
         mask = torch.stack([inp > inp.min() for inp in input])
-        anomaly_map *= mask
-        anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
 
-    elif config.modality in ['RF']:
-        mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
+        if config.get_images:
+            anomaly_map *= mask
+            mins = [(map[map > map.min()]) for map in anomaly_map]
+            mins = [map.min() for map in mins]
+
+            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
+
         anomaly_map *= mask
-        anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
-                                     for map, inp in zip(anomaly_map, input)])
+        anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
+    # elif config.modality in ['RF'] and config.dataset == 'DDR':
+    #     mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()for inp in input])
+
+    #     anomaly_map *= mask
+    #     anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
+    #                                   for map, inp in zip(anomaly_map, input)])
+
+    elif config.modality in ['RF'] and config.dataset == 'DDR':
+        # if config.get_images:
+        #     mask = torch.stack([inp > inp.min() for inp in input[:, 0].unsqueeze(1)])
+        #     anomaly_map *= mask
+        #     mins = [(map[map > map.min()]) for map in anomaly_map]
+        #     mins = [map.min() for map in mins]
+        #     anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
+        #     anomaly_map *= mask
+        anomaly_score = torch.tensor([map.max() for map in anomaly_map])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
 
@@ -260,9 +308,14 @@ def train() -> None:
                 validate(val_loader, config)
 
             # or config.step == 10 or config.step == 50 or config.step == 100 or config.step == 500:
-            if config.step % config.anom_val_frequency == 0:
 
-                evaluate(config, small_testloader, val_step, val_loader)
+            if config.early_validation:
+                if config.step % config.anom_val_frequency == 0 or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
+                    evaluate(config, small_testloader, val_step, val_loader)
+            else:
+                # or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
+                if config.step % config.anom_val_frequency == 0:
+                    evaluate(config, small_testloader, val_step, val_loader)
 
             if config.step % config.save_frequency == 0:
                 save_model(model, config, config.step)

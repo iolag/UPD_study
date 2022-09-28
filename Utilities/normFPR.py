@@ -1,6 +1,10 @@
+
+"""
+adapted from:
+https://github.com/yousuhang/Unsupervised-Lesion-Detection-via-Image-Restoration-with-a-Normative-Prior
+"""
 from Utilities.metrics import compute_dice
 from Utilities.utils import log
-
 from torch.utils.data import DataLoader
 import torch
 import numpy as np
@@ -9,10 +13,24 @@ from argparse import Namespace
 
 def dice_f1_normal_nfpr(val_loader: DataLoader,
                         config: Namespace, val_step: object = None,
-                        anomaly_maps: list = None, segmentations: list = None,
+                        anomaly_maps: list = None, masks: list = None,
                         anomaly_scores: list = None, labels: list = None,
                         normal_residuals: list = None, normal_scores: list = None) -> None:
+    """
+    Calculates and logs (wandb) Dice (pixel-level) and/or f1-score (image-level)
+    on n%fpr of normal samples.
 
+    Args:
+        val_loader: validation set dataloader
+        config
+        anomaly_maps: model output anomaly maps
+        masks: ground truth anomaly masks
+        anomaly_scores:  model output anomaly scores
+        labels: ground truth binary labels
+        normal_residuals: model output anomaly maps on normal validation samples
+        normal_scores: model output anomaly scores on normal validation samples
+
+    """
     if normal_residuals is None:  # in the padim case these and normal_scores are given
         normal_residuals = []
         normal_scores = []
@@ -24,20 +42,21 @@ def dice_f1_normal_nfpr(val_loader: DataLoader,
             normal_residuals.append(x[0].cpu())
             normal_scores.append(x[1].cpu())
 
-    if config.dice_normal and segmentations is not None:
+    if config.dice_normal and masks is not None:
 
         thresh = threshold_normal_nfpr(torch.cat(normal_residuals), config.nfpr)
         dice_nfpr = compute_dice(torch.where(torch.cat(anomaly_maps) >
-                                 thresh, 1, 0), torch.cat(segmentations))
+                                 thresh, 1, 0), torch.cat(masks))
         print(f"Dice at {config.nfpr * 100}% fpr on normal samples: {dice_nfpr:.4f}")
         log({f'anom_val/dice-norm-{config.nfpr * 100}_fpr': dice_nfpr}, config)
-
+        return thresh
     if config.f1_normal:
 
         thresh = threshold_normal_nfpr(torch.cat(normal_scores), config.nfpr)
         dice_nfpr = compute_dice(torch.where(torch.cat(anomaly_scores) > thresh, 1, 0), torch.cat(labels))
-        print(f"F1-score at {config.nfpr * 100}% fpr on normal samples: {dice_nfpr:.4f}")
+        print(f"F1-score at {config.nfpr * 100}% fpr on normal samples: {dice_nfpr:.4f}, threshold: {thresh}")
         log({f'anom_val/F1-norm-{config.nfpr * 100}_fpr': dice_nfpr}, config)
+        return thresh
 
 
 def threshold_normal_nfpr(normal_residuals, fprate):

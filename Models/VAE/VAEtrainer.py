@@ -1,5 +1,6 @@
 import sys
-sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
+import os
+sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
 from argparse import ArgumentParser
 import numpy as np
 import torch
@@ -8,6 +9,7 @@ from VAEmodel import VAE
 from time import time
 from torch import Tensor
 from typing import Tuple
+from scipy.ndimage import gaussian_filter
 from Utilities.evaluate import evaluate
 from Utilities.common_config import common_config
 from Utilities.utils import (save_model, seed_everything,
@@ -26,7 +28,7 @@ def get_config():
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=0, help='Weight decay')
     parser.add_argument('--max_steps', type=int, default=30000, help='Number of training steps')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
+    parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
 
     # Model Hyperparameters
     parser.add_argument('--kl_weight', type=float, default=0.001, help='kl weight')
@@ -46,7 +48,7 @@ def get_config():
 
 config = get_config()
 
-# Specific modality params (Default above are for MRI t2)
+# Specific modality params (Default are for MRI t2)
 
 if config.modality != 'MRI':
     config.max_steps = 10000
@@ -65,21 +67,30 @@ if config.modality == 'COL':
     config.width = 16
     config.conv1x1 = 64
 
-if config.modality == 'MRI' and config.sequence == 't1':
+if (config.modality == 'MRI' and config.sequence == 't1') or config.modality == 'RF':
+
     config.kl_weight = 0.0001
     config.num_layers = 6
     config.latent_dim = 512
     config.width = 32
     config.conv1x1 = 64
 
-if config.modality == 'RF':
-    config.kl_weight = 0.001
+if config.modality == 'MRI' and config.sequence == 't1+t2':
+    config.img_channels = 3
+    config.kl_weight = 0.0001
     config.num_layers = 6
-    config.latent_dim = 256
-    config.width = 16
-    config.conv1x1 = 32
+    config.latent_dim = 512
+    config.width = 32
+    config.conv1x1 = 64
+# if config.modality == 'RF':
+#     config.kl_weight = 1
+#     config.num_layers = 5
+#     config.latent_dim = 768
+#     config.width = 64
+#     config.conv1x1 = 32
 
 # get logger and naming string
+config.restoration = False
 config.method = 'VAE'
 misc_settings(config)
 
@@ -111,6 +122,14 @@ if config.eval:
     model.load_state_dict(load_model(config))
     print('Saved model loaded.')
 
+if config.speed_benchmark:
+    from torchinfo import summary
+    a = summary(model, (16, 3, 128, 128), verbose=0)
+    params = a.total_params
+    macs = a.total_mult_adds
+    print('Number of Million parameters: ', params / 1e06)
+    print('Number of GMACs: ', macs / 1e09)
+
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
 
 
@@ -136,29 +155,39 @@ def vae_val_step(input, return_loss: bool = True) -> Tuple[dict, Tensor]:
 
     # Anomaly map
     if config.ssim_eval:
+
         anomaly_map = ssim_map(input_recon, input)
+        if config.sequence == 't1+t2':
+            anomaly_map_t1 = ssim_map(input_recon[:, 0].unsqueeze(1), input[:, 0].unsqueeze(1))
+            anomaly_map_t2 = ssim_map(input_recon[:, 1].unsqueeze(1), input[:, 1].unsqueeze(1))
+            anomaly_map = (anomaly_map_t1 + anomaly_map_t2) / 2
+        if config.gaussian_blur:
+            anomaly_map = anomaly_map.cpu().numpy()
+            for i in range(anomaly_map.shape[0]):
+                anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=config.sigma)
+            anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
     else:
         anomaly_map = (input - input_recon).abs().mean(1, keepdim=True)
+        if config.gaussian_blur:
+            anomaly_map = anomaly_map.cpu().numpy()
+            for i in range(anomaly_map.shape[0]):
+                anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=config.sigma)
+            anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
 
-    # anomaly_map = input
     # for MRI, RF apply brainmask
-    if config.modality in ['MRI', 'CT']:
-        mask = torch.stack([inp > inp.min() for inp in input])
-
-        # scale anomaly maps by substracting the minimum non-background value for better visualisation
-        # anomaly_map *= mask
-        # mins = [(map[msk].min()) for map, msk in zip(anomaly_map, mask)]
-        # anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
+    if config.modality in ['MRI', 'MRInoram', 'CT']:
+        mask = torch.stack([inp[0].unsqueeze(0) > inp[0].min() for inp in input])
+        # if config.get_images:
+        #     anomaly_map *= mask
+        #     mins = [(map[map > 0]) for map in anomaly_map]
+        #     mins = [map.min() for map in mins]
+        #     anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         anomaly_map *= mask
-        #
-        input_recon *= mask
-        anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
-
-    elif config.modality in ['RF']:
-        mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
-        anomaly_map *= mask
-        anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
+        anomaly_score = torch.tensor([map[inp[0].unsqueeze(0) > inp[0].min()].max()
                                      for map, inp in zip(anomaly_map, input)])
+
+    elif config.modality in ['RF'] and config.dataset == 'DDR':
+        anomaly_score = torch.tensor([map.max() for map in anomaly_map])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
 
@@ -248,9 +277,10 @@ def train(model):
                 # Reset loss dict
                 train_losses = defaultdict(list)
 
-            if config.step % config.val_frequency == 0:  # or i_iter == 10 or i_iter == 50 or i_iter == 100:
+            if config.step % config.val_frequency == 0:
                 validate(val_loader, config)
 
+            # or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
             if config.step % config.anom_val_frequency == 0:
                 # or i_iter == 10 or i_iter == 50 or i_iter == 100:
                 evaluate(config, small_testloader, vae_val_step, val_loader)
@@ -264,13 +294,12 @@ def train(model):
                 return
 
         i_epoch += 1
-        print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
 
 
 if __name__ == '__main__':
     if config.eval:
-        print('Evaluating model...')
+        print(f'Evaluating {config.name}...')
         evaluate(config, big_testloader, vae_val_step, val_loader)
-
+        #evaluate_hist(config, big_testloader, vae_val_step, val_loader)
     else:
         train(model)

@@ -46,12 +46,12 @@ def sample_location(img: np.ndarray, core_percent: float = 0.8, is_mri: bool = F
 
         core = np.array([cx, cy])
 
-        # if is_mri:
-        #     if img[..., cx, cy] != 0.:
-        #         break
-        # else:
-        #     break
-        break
+        if is_mri:
+            if img[..., cx, cy] != 0.:
+                break
+        else:
+            break
+
     return core
 
 
@@ -223,7 +223,8 @@ def pii(img1: np.ndarray, img2: np.ndarray, is_mri: bool = False) -> Tuple[np.nd
 
     # if MRI, clean the background
     if is_mri:
-        img_pii[img1 == 0.] = 0.
-        label[img1 == 0.] = 0.
+        mask = img1 > img1.min()
+        img_pii *= mask
+        label *= mask
 
     return img_pii, label

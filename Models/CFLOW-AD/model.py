@@ -83,7 +83,7 @@ def load_encoder(config):
     elif config.arch == 'wide_resnet50_2':
         encoder = wide_resnet50_2(pretrained=True, progress=True)
 
-    if config.modality in ['MRI', 'CT']:
+    if (config.modality in ['MRI', 'CT', 'COL']) or (config.modality == 'RF' and config.dataset == 'DDR') and not config.deep:
 
         # forward hook activations --> every forward pass, activations will be aggregated in activation dict
         if config.num_pool_layers >= 3:

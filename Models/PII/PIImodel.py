@@ -103,7 +103,7 @@ class WideResNetAE(nn.Module):
         super().__init__()
 
         # Unpack config or set default values
-        in_channels = config.img_channels if "img_channels" in config else 1
+        in_channels = 3  # config.img_channels if "img_channels" in config else 1
         out_channels = config.img_channels if "img_channels" in config else 1
         depth = config.depth if "depth" in config else 16
         k = config.k if "k" in config else 4
@@ -137,11 +137,24 @@ class WideResNetAE(nn.Module):
                    dropout=dropout),
         )
 
+        self.avgpool = nn.AdaptiveAvgPool2d((2, 2))
+
     def forward(self, inp: Tensor) -> Tensor:
+        if inp.shape[1] == 1:
+            inp = inp.repeat(1, 3, 1, 1)
+
         latent = self.encoder(inp)
         pred = self.decoder(latent)
         pred = torch.sigmoid(pred)
         return pred
+
+    # CCD helper func
+    def encode(self, inp: Tensor) -> Tensor:
+        if inp.shape[1] == 1:
+            inp = inp.repeat(1, 3, 1, 1)
+        x = self.encoder(inp)
+        x = self.avgpool(x)
+        return torch.flatten(x, 1)
 
 
 if __name__ == '__main__':

@@ -1,13 +1,16 @@
 import sys
-sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
+import os
+sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
 import torch
 from argparse import ArgumentParser
 import numpy as np
 from time import time
 import torch.nn.functional as F
+from scipy.ndimage import gaussian_filter
 from model import load_decoder, load_encoder, positionalencoding2d, activation
 from Utilities.common_config import common_config
 from Utilities.evaluate import evaluate
+from torchinfo import summary
 from Utilities.utils import (seed_everything, load_data, load_pretrained,
                              misc_settings, log)
 
@@ -21,7 +24,7 @@ def get_config():
     parser = common_config(parser)
 
     # Model Hyperparameters
-    parser.add_argument('--arch', default='wide_resnet50_2', type=str, metavar='A',
+    parser.add_argument('-arch', default='wide_resnet50_2', type=str, metavar='A',
                         help='feature extractor: wide_resnet50_2/resnet18')
     parser.add_argument('-pl', '--num-pool-layers', default=3, type=int, metavar='L',
                         help='number of layers used in NF model (default: 3)')
@@ -60,7 +63,8 @@ train_loader, val_loader, big_testloader, small_testloader = load_data(config)
 
 log_theta = torch.nn.LogSigmoid()
 GCONST = -0.9189385332046727  # ln(sqrt(2*pi))
-
+num_params = []
+macs = []
 
 """"""""""""""""""""""""""" Init model/optimizer """""""""""""""""""""""""""
 # Reproducibility
@@ -91,7 +95,6 @@ optimizer = torch.optim.Adam(params, lr=config.lr)
 if config.eval:
     [decoder.load_state_dict(torch.load(f'saved_models/{config.modality}/{config.name}_decoder_{i}.pth'))
      for i, decoder in enumerate(decoders)]
-
 
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
 
@@ -124,8 +127,13 @@ def train():
                 # Reset loss
                 train_losses = []
 
-            if config.step % config.anom_val_frequency == 0 or config.step == 100 or config.step == 500:
-                evaluate(config, small_testloader, eval_step, val_loader)
+            if config.early_validation:
+                if config.step % config.anom_val_frequency == 0 or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
+                    evaluate(config, small_testloader, val_step, val_loader)
+            else:
+                # or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
+                if config.step % config.anom_val_frequency == 0:
+                    evaluate(config, small_testloader, val_step, val_loader)
 
             if config.step >= config.max_steps:
                 print(f'Reached {config.max_steps} iterations. Finished training {config.name}.')
@@ -177,6 +185,11 @@ def train_step(batch):
         # with b*h*w conditional vectors in c_r, one for each feature vector of e_r
         p = positionalencoding2d(cond_vec, H, W).to(config.device).unsqueeze(0).repeat(B, 1, 1, 1)
         c_r = p.reshape(B, cond_vec, HW).transpose(1, 2).reshape(BHW, cond_vec)  # [BHW, cond_vec}
+        if config.speed_benchmark:
+            b = summary(decoder, input_data=[e_r, [c_r, ]], verbose=0)
+
+            num_params.append(b.total_params)
+            macs.append(b.total_mult_adds)
 
         z, log_jac_det = decoder(e_r, [c_r, ])
         decoder_log_prob = C * GCONST - 0.5 * torch.sum(z**2, 1) + log_jac_det
@@ -203,7 +216,7 @@ def train_step(batch):
 
 
 @torch.no_grad()
-def eval_step(input, return_loss: bool = False):
+def val_step(input, return_loss: bool = False):
     """Forward-pass images into the network to extract encoder features and compute probability.
         Args:
           input: Batch of images.
@@ -249,12 +262,13 @@ def eval_step(input, return_loss: bool = False):
         test_dist.append(log_prob.detach())
 
     # will use this during test time to infer a max to normalize (see __main__)
-    config.test_max = torch.tensor([0, 0, 0]).to(config.device)
+    config.test_max = torch.tensor([0., 0., 0.]).to(config.device)
     for i, p in enumerate(pool_layers):
         test_prob = test_dist[i]
         layer_max = test_prob.max()
+        # print(layer_max)
         if layer_max > config.current_max[i]:
-            config.current_max[i] = layer_max
+            config.test_max[i] = layer_max
 
     test_map = [list() for p in pool_layers]
 
@@ -269,7 +283,7 @@ def eval_step(input, return_loss: bool = False):
         # upsample
         test_map[i] = F.interpolate(test_prob.unsqueeze(1),
                                     size=config.image_size, mode='bilinear',
-                                    align_corners=True).cuda()
+                                    align_corners=True).to(config.device)
 
     # score aggregation
     anomaly_map = torch.zeros_like(test_map[0])
@@ -280,32 +294,60 @@ def eval_step(input, return_loss: bool = False):
     # changed this to not be depend on batch and also have same scaling
     #  (instead of per batch sample anom_map.max() - anom_map)
    # print(test_prob.min(), test_prob.max())
-    anomaly_map = 1 - anomaly_map
+    anomaly_map = 1 - anomaly_map.detach()
     # p rint(anomaly_map.min(), anomaly_map.max())
-
+    if config.gaussian_blur:
+        anomaly_map = anomaly_map.cpu().numpy()
+        for i in range(anomaly_map.shape[0]):
+            anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=4)
+        anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
     # apply brainmask for MRI
     if config.modality in ['MRI', 'MRInoram', 'CT']:
         # normalize brain pixels only
         input = input[:, 0].unsqueeze(1)
+
         mask = torch.stack([inp > inp.min() for inp in input])
-        # scale anomaly maps by substracting the minimum non-background value for better visualisation
+        if config.get_images and config.sequence == 't2':
+            anomaly_map *= mask
+            mins = [(map[map > map.min()]) for map in anomaly_map]
+            mins = [map.min() for map in mins]
+
+            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         anomaly_map *= mask
+
         # mins = [(map[msk].min()) for map, msk in zip(anomaly_map, mask)]
         # anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         # anomaly_map *= mask
 
-        anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
+        anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
 
-    elif config.modality in ['RF']:
-        mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
-        anomaly_map *= mask
-        anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
-                                      for map, inp in zip(anomaly_map, input)])
+    # elif config.modality in ['RF']:
+    #     mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
+    #     anomaly_map *= mask
+    #     anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
+    #                                   for map, inp in zip(anomaly_map, input)])
+    elif config.modality in ['RF'] and config.dataset == 'DDR':
+        # if config.get_images:
+
+        #     mins = [(map[map > map.min()]) for map in anomaly_map]
+        #     mins = [map.min() for map in mins]
+
+        #     anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
+        anomaly_score = torch.tensor([map.max() for map in anomaly_map])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
-
     return anomaly_map, anomaly_score
 
+
+if config.speed_benchmark:
+
+    a = summary(encoder, (16, 3, 128, 128), verbose=0)
+    num_params.append(a.total_params)
+    macs.append(a.total_mult_adds)
+    train_step(torch.rand(16, 3, 128, 128).to(config.device))
+
+    print('Number of Million parameters: ', sum(num_params) / 1e06)
+    print('Number of GMACs: ', sum(macs) / 1e09)
 
 if __name__ == '__main__':
     if not config.eval:
@@ -319,10 +361,10 @@ if __name__ == '__main__':
             input = input.repeat(1, 3, 1, 1)
         config.current_max = torch.tensor([0, 0, 0]).to(config.device)
 
-        _, _ = eval_step(input)
+        _, _ = val_step(input)
         config.current_max = config.test_max
-
-        evaluate(config, big_testloader, eval_step, val_loader)
+        # print(config.current_max)
+        evaluate(config, big_testloader, val_step, val_loader)
 
 
 # perm = torch.randperm(BHW).to(config.device)  # BHW

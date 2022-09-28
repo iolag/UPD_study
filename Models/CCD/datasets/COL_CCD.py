@@ -6,6 +6,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms as T
 from augmentations import Rotation, Cutout1, Cutout, Gaussian_noise, CutPerm
 import torchvision.transforms as transforms
+import random
 
 
 class CCD_Dataset(Dataset):
@@ -165,11 +166,17 @@ def get_files(config, train: bool = True):
                                  'Colonoscopy',
                                  'labeled-images',
                                  'lower-gi-tract',
-                                 'normal_image_paths.csv'))
+                                 'normal_image_paths.txt'))
 
     paths = pathfile.read().splitlines()
 
-    for idx, path in enumerate(paths):
-        paths[idx] = os.path.join(config.datasets_dir, path)
+    # shuffle pathlist
 
-    return paths[300:]
+    def myfunction():
+        return 0.5
+    random.shuffle(paths, myfunction)
+
+    paths = paths[:2100]
+
+    if train:
+        return paths[500:]

@@ -18,7 +18,7 @@ class CCD_Dataset(Dataset):
         elif config.cls_augmentation == 'cutperm':
             strong_aug = CutPerm()
         elif config.cls_augmentation == 'cutout':
-            strong_aug = Cutout()
+            strong_aug = Cutout(length=75)
         elif config.cls_augmentation == 'rotation':
             strong_aug = Rotation()
 
@@ -35,6 +35,7 @@ class CCD_Dataset(Dataset):
 
         for img in self.imgs:
             img = torch.FloatTensor(img)
+
             self.data.append(img)
 
         self.data = torch.stack(self.data)
@@ -87,9 +88,9 @@ class AugmentedDataset(Dataset):
     Returns an image together with an augmentation.
     """
 
-    def __init__(self, dataset):
+    def __init__(self, dataset, config):
         super(AugmentedDataset, self).__init__()
-
+        self.center = config.center
         self.transform = dataset.transform
         # make it so in parent dataset it won't apply transform again during get_item:
         dataset.transform = None
@@ -105,6 +106,10 @@ class AugmentedDataset(Dataset):
         sample['image'] = self.transform(image)  # α
         sample['image_augmented'] = self.transform(image)  # α'
 
+        if self.center:
+            # Center input
+            sample['image'] = (sample['image'] - 0.5) * 2
+            sample['image_augmented'] = (sample['image_augmented'] - 0.5) * 2
         return sample
 
 
@@ -121,7 +126,7 @@ def get_train_dataloader(config):
 
     dataset = CCD_Dataset(config, transform=transform)
 
-    dataset = AugmentedDataset(dataset)
+    dataset = AugmentedDataset(dataset, config)
 
     return torch.utils.data.DataLoader(dataset, num_workers=8,
                                        batch_size=32, pin_memory=True,

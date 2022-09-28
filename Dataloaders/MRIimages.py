@@ -1,7 +1,6 @@
 from typing import List, Tuple, Union
 import torch
 from torch.utils.data import Dataset
-from torchvision import transforms as T
 import numpy as np
 from torch.utils.data import DataLoader
 from DatasetPreprocessing.mri import (
@@ -27,31 +26,14 @@ class NormalDataset(Dataset):
         """
 
         self.files = files
-        self.stadardize = config.stadardize
         self.center = config.center
-
-        if config.sequence == 't1':
-            mean = 0.1250
-            std = 0.2481
-
-        elif config.sequence == 't2':
-            mean = 0.0785
-            std = 0.1581
-
-        self.transforms = T.Compose([
-            T.Normalize(mean, std)
-        ])
 
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, idx) -> Tensor:
         img = self.files[idx]
-
-        if self.stadardize:
-            img = self.transforms(torch.FloatTensor(img))
-        else:
-            img = torch.FloatTensor(img)
+        img = torch.FloatTensor(img)
 
         if self.center:
             # Center input
@@ -75,42 +57,20 @@ class AnomalDataset(Dataset):
 
         config should include "sequence" and "stadardize"
         """
-        self.stadardize = config.stadardize
         self.images = files[0]
         self.segmentations = files[1]
         self.center = config.center
-        self.atlas_exp = config.atlas_exp
-        if config.sequence == 't1':
-            mean = 0.1250
-            std = 0.2481
-
-        elif config.sequence == 't2':
-            mean = 0.0785
-            std = 0.1581
-
-        elif config.sequence == 't1+t2':
-            mean = 0.0785
-            std = 0.1581
-
-        self.transforms = T.Compose([
-            #T.Normalize(mean, std)
-        ])
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, idx) -> Tuple[Tensor, Tensor]:
         img = self.images[idx]
+        img = torch.FloatTensor(img)
 
-        if self.stadardize:
-            img = self.transforms(torch.FloatTensor(img))
-        else:
-            img = torch.FloatTensor(img)
         # Center input
         if self.center:
-
             img = (img - 0.5) * 2
-            #atlas = (atlas - 0.5) * 2
 
         seg = self.segmentations[idx]
         seg = torch.ByteTensor(seg)
@@ -164,8 +124,7 @@ def get_dataloaders(config: Namespace,
                         slices = slices[0]
                     else:
                         slices = slices[-1]
-                    slices = [slices] * 100
-                    slices = np.concatenate(slices, axis=0)
+
                 else:
                     if config.seed == 10:
                         slices = slices[:int(len(slices) * (config.percentage / 100))]

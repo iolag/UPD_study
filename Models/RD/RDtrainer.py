@@ -1,9 +1,8 @@
 import sys
-sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
+import os
+sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
 import torch
 import numpy as np
-from resnet import wide_resnet50_2  # ,resnet18, resnet50,
-from de_resnet import de_wide_resnet50_2  # , de_resnet50,de_resnet18
 from torch.nn import functional as F
 from argparse import ArgumentParser
 from time import time
@@ -11,7 +10,7 @@ from typing import Tuple
 from torch import Tensor
 from scipy.ndimage import gaussian_filter
 from Utilities.common_config import common_config
-from Utilities.evaluate import evaluate
+from Utilities.evaluate import evaluate, evaluate_hist
 from Utilities.utils import (save_model, seed_everything,
                              load_data, load_pretrained,
                              misc_settings,
@@ -29,7 +28,7 @@ def get_config():
     parser.add_argument('--weight_decay', type=float, default=0.0, help='Weight decay')
     # epochs = 200
     parser.add_argument('--max_steps', '-ms', type=int, default=10000, help='Number of training steps')
-    parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size')
+    parser.add_argument('--batch_size', '-bs', type=int, default=4, help='Batch size')
 
     # Model settings
     parser.add_argument('--arch', type=str, default='wide_resnet50_2',
@@ -59,19 +58,36 @@ seed_everything(config.seed)
 
 # Init model
 print("Initializing model...")
-encoder, bn = wide_resnet50_2(pretrained=True)
+if config.arch == 'resnet18':
+    if not config.deep:
+        from resnet import resnet18  # ,resnet18, resnet50,
+        from de_resnet import de_resnet18  # , de_resnet50,de_resnet18
+    else:
+        from deep.resnet import resnet18  # ,resnet18, resnet50,
+        from deep.de_resnet import de_resnet18  # , de_resnet50,de_resnet18
+    encoder, bn = resnet18(pretrained=True)
+    decoder = de_resnet18(pretrained=False)
+else:
+    if not config.deep:
+        from resnet import wide_resnet50_2  # ,resnet18, resnet50,
+        from de_resnet import de_wide_resnet50_2  # , de_resnet50,de_resnet18
+    else:
+        from deep.resnet import wide_resnet50_2  # ,resnet18, resnet50,
+        from deep.de_resnet import de_wide_resnet50_2  # , de_resnet50,de_resnet18
+    encoder, bn = wide_resnet50_2(pretrained=True)
+    decoder = de_wide_resnet50_2(pretrained=False)
+
+
 encoder = encoder.to(config.device)
 bn = bn.to(config.device)
 encoder.eval()
-decoder = de_wide_resnet50_2(pretrained=False)
 decoder = decoder.to(config.device)
-
 # load pretrained with CCD
 if config.load_pretrained:
     encoder = load_pretrained(encoder, config)
     encoder.eval()
 
-# will use this dict for saving
+# use this dict for saving
 model = {'encoder': encoder, 'decoder': decoder, 'bn': bn}
 
 # Init optimizer
@@ -85,6 +101,18 @@ if config.eval:
     decoder.load_state_dict(load_dec)
     bn.load_state_dict(load_bn)
     print('Saved model loaded.')
+
+if config.speed_benchmark:
+    from torchinfo import summary
+    input = next(iter(big_testloader))[0].cuda()
+
+    a = summary(encoder, (16, 3, 128, 128), verbose=0)
+    b = summary(bn, input_data=[encoder(input)], verbose=0)
+    c = summary(decoder, bn(encoder(input)).shape, verbose=0)
+    params = a.total_params + b.total_params + c.total_params
+    macs = a.total_mult_adds + b.total_mult_adds + c.total_mult_adds
+    print('Number of Million parameters: ', params / 1e06)
+    print('Number of GMACs: ', macs / 1e09)
 
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
 
@@ -128,16 +156,17 @@ def get_anomaly_map(enc_output, dec_output, config) -> Tensor:
         a_map = F.interpolate(a_map, size=config.image_size, mode='bilinear', align_corners=True)
         anomaly_map += a_map
 
-    anomaly_map = anomaly_map.detach().cpu().numpy()
     # apply gaussian smoothing on the score map
-    for i in range(anomaly_map.shape[0]):
-        anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=4)
+    if config.gaussian_blur:
+        anomaly_map = anomaly_map.detach().cpu().numpy()
+        for i in range(anomaly_map.shape[0]):
+            anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=4)
 
-    anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
+        anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
     return anomaly_map
 
 
-@torch.no_grad()
+@ torch.no_grad()
 def val_step(input, return_loss: bool = True) -> Tuple[float, Tensor, Tensor]:
     """Calculates val loss, anomaly maps of shape batch_shape and anomaly scores of shape [b,1]"""
     encoder.eval()
@@ -148,29 +177,61 @@ def val_step(input, return_loss: bool = True) -> Tuple[float, Tensor, Tensor]:
     loss = loss_fucntion(enc_output, dec_output)
     anomaly_map = get_anomaly_map(enc_output, dec_output, config)
 
+    # activations = [enc_output[0][-2, 0:10], enc_output[1][-2, 0:10], enc_output[2][-2, 0:10]]
     if config.modality in ['MRI', 'MRInoram', 'CT']:
-        mask = torch.stack([inp > inp.min() for inp in input])
-        # anomaly_map *= mask
-        # mins = [(map[map > 0]) for map in anomaly_map]
-        # mins = [map.min() for map in mins]
+        mask = torch.stack([inp[0].unsqueeze(0) > inp[0].min() for inp in input])
+        if config.get_images:
+            anomaly_map *= mask
+            mins = [(map[map > 0]) for map in anomaly_map]
+            mins = [map.min() for map in mins]
 
-        # anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
+            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         anomaly_map *= mask
-        anomaly_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(anomaly_map, input)])
-
-    elif config.modality in ['RF']:
-        mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()for inp in input])
-
-        anomaly_map *= mask
-        anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
+        anomaly_score = torch.tensor([map[inp[0].unsqueeze(0) > inp[0].min()].max()
                                       for map, inp in zip(anomaly_map, input)])
+
+    # elif config.modality in ['RF'] and config.dataset == 'DDR':
+    #     mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()for inp in input])
+
+    #     anomaly_map *= mask
+    #     anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
+    #                                   for map, inp in zip(anomaly_map, input)])
+    elif config.modality in ['RF'] and config.dataset == 'DDR':
+        anomaly_score = torch.tensor([map.max() for map in anomaly_map])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
-
     if return_loss:
         return loss.item(), anomaly_map, anomaly_score
     else:
-        return anomaly_map, anomaly_score
+        return anomaly_map, anomaly_score  # , activations
+
+
+def validate(val_loader, config):
+
+    val_losses = []
+    i_val_step = 0
+
+    for input in val_loader:
+        # x [b, 1, h, w]
+        input = input.to(config.device)
+        # Compute loss
+        loss, anomaly_map, _ = val_step(input)
+        val_losses.append(loss)
+        i_val_step += 1
+
+        if i_val_step >= config.val_steps:
+            break
+
+    # Print validation results
+    log_msg = f"Validation loss on normal samples: {np.mean(val_losses):.4f}"
+    print(log_msg)
+
+    # Log to wandb
+    config.logger.log({
+        'val/loss': np.mean(val_losses),
+    }, step=config.step)
+
+    return np.mean(val_losses)
 
 
 def train() -> None:
@@ -201,10 +262,19 @@ def train() -> None:
 
                 # Reset loss dict
                 train_losses = []
-            s = config.step
 
-            if config.step % config.anom_val_frequency == 0 or s == 10 or s == 50 or s == 100 or s == 500:
-                evaluate(config, small_testloader, val_step, val_loader)
+            if config.step % config.val_frequency == 0:
+                validate(val_loader, config)
+
+            if config.early_validation:
+                if config.step % config.anom_val_frequency == 0 or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
+                    evaluate(config, small_testloader, val_step, val_loader)
+            else:
+                #
+                # or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
+                if config.step % config.anom_val_frequency == 0:
+
+                    evaluate(config, small_testloader, val_step, val_loader)
 
             if config.step % config.save_frequency == 0:
                 save_model(model, config, config.step)
@@ -215,7 +285,7 @@ def train() -> None:
                 return
 
         i_epoch += 1
-        print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
+       # print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
 
 
 if __name__ == '__main__':
@@ -223,6 +293,7 @@ if __name__ == '__main__':
     if config.eval:
         print('Evaluating model...')
         evaluate(config, big_testloader, val_step, val_loader)
+        # evaluate_hist(config, big_testloader, val_step, val_loader)
 
     else:
         train()

@@ -110,7 +110,7 @@ class Gaussian_noise(nn.Module):
             output = self._speckle_noise(img)
         elif aug_index == 3:
             output = self._salt_pepper_noise(img)
-        return output
+        return output.type(torch.float)
 
     def _gaussian_noise(self, img):
 

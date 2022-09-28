@@ -1,16 +1,18 @@
+import os
+
+from typing import List, Tuple
 from PIL import Image
-import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms as T
 import numpy as np
-from Models.PII.fpi_utils import pii
-from argparse import Namespace
-from torch.utils.data import DataLoader
-from Utilities.utils import GenericDataloader
-import os
-from typing import List, Tuple
 from torch import Tensor
+from argparse import Namespace
+from Utilities.utils import GenericDataloader
 from glob import glob
+import torch
+from pycocotools import mask
+
+import json
 
 
 def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List]:
@@ -29,7 +31,9 @@ def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List
     ap = "AP_" if config.AP_only else ""
     sup = "sup_" if config.sup_devices else "no_sup_"
     if config.sex == 'both':
+
         file_name = f'*_normal_train_{ap}{sup}'
+
         file = glob(os.path.join(config.datasets_dir,
                                  'ChestXR/CheXpert-v1.0-small/normal_splits',
                                  file_name + '*.txt'))
@@ -118,12 +122,19 @@ def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List
 
 class NormalDataset(Dataset):
     """
-    Dataset class for the Healthy datasets.
+    Dataset class for the Healthy CXR images
+    from CheXpert Dataset.
     """
 
-    def __init__(self, files, config: Namespace):
+    def __init__(self, files: List, config: Namespace):
+        """
+        Args
+            files: list of image paths for healthy colonoscopy images
+            config: Namespace() config object
 
-        self.center = config.center
+        config should include "image_size"
+        """
+
         self.stadardize = config.stadardize
 
         self.files = files
@@ -141,26 +152,21 @@ class NormalDataset(Dataset):
     def __len__(self):
         return len(self.files)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx) -> Tensor:
+        """
+        Args:
+            idx: Index of the file to load.
+        Returns:
+            image: image tensor of size []
+        """
 
-        img = np.asarray(self.transforms(Image.open(self.files[idx])))
+        image = Image.open(self.files[idx])
+        image = self.transforms(image)
 
-        #img = img[None, :, :]
+        if self.stadardize:
+            image = self.norm(image)
 
-        # total_mask = np.zeros_like(img) * 1.
-
-        idx2 = np.random.randint(0, len(self))
-        img2 = np.asarray(self.transforms(Image.open(self.files[idx2])))
-        #img2 = img2[None, :, :]
-        img, mask = pii(img, img2, is_mri=False)
-        img = torch.FloatTensor(img) / img.max()
-        mask = torch.FloatTensor(mask)
-
-        if self.center:
-            # Center input
-            img = (img - 0.5) * 2
-
-        return img, mask
+        return image
 
 
 class AnomalDataset(Dataset):
@@ -169,11 +175,7 @@ class AnomalDataset(Dataset):
     images from the Hyper-Kvasir Dataset.
     """
 
-    def __init__(self,
-                 normal_paths: List,
-                 anomal_paths: List,
-                 labels_normal: List,
-                 labels_anomal: List,
+    def __init__(self, gt, paths,
                  config: Namespace):
         """
         Args:
@@ -184,11 +186,8 @@ class AnomalDataset(Dataset):
         config should include "image_size"
         """
 
-        self.center = config.center
-        self.stadardize = config.stadardize
-
-        self.images = anomal_paths + normal_paths
-        self.labels = labels_anomal + labels_normal
+        self.gt = gt
+        self.paths = paths
 
         self.image_transforms = T.Compose([
             T.Resize((config.image_size, config.image_size),
@@ -196,13 +195,15 @@ class AnomalDataset(Dataset):
             T.CenterCrop(config.image_size),
             T.ToTensor()
         ])
-
-        mean = 0.5364
-        std = 0.2816
-        self.norm = T.Normalize(mean, std)
+        self.mask_transforms = T.Compose([
+            T.Resize((config.image_size, config.image_size),
+                     T.InterpolationMode.NEAREST),
+            T.CenterCrop(config.image_size),
+            T.ToTensor()
+        ])
 
     def __len__(self):
-        return len(self.images)
+        return len(self.paths)
 
     def __getitem__(self, idx) -> Tuple[Tensor, Tensor]:
         """
@@ -210,20 +211,10 @@ class AnomalDataset(Dataset):
         :return: The loaded image and the binary segmentation mask.
         """
 
-        image = Image.open(self.images[idx])
+        image = Image.open(self.paths[idx])
         image = self.image_transforms(image)
 
-        if self.stadardize:
-            image = self.norm(image)
-        if self.center:
-            # Center input
-            image = (image - 0.5) * 2
-        # for compatibility, create fake image masks to provide as labels
-        # negative = zero tensor, positive = Ident tensor
-        if self.labels[idx] != 0:
-            mask = torch.eye(image.shape[-1]).unsqueeze(0)
-        else:
-            mask = torch.zeros_like(image)
+        mask = self.mask_transforms(Image.fromarray(self.gt[idx] * 255))
 
         return image, mask
 
@@ -253,27 +244,6 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
         idx = torch.randperm(len(trainfiles))
         trainfiles = list(np.array(trainfiles)[idx])
 
-        # percentage experiment: keep a specific percentage of the train files, or a single image.
-        # for seed != 10 (stadard seed), index the list backwards
-        if config.percentage != 100:
-            if config.percentage == -1:  # single img scenario
-                if config.seed == 10:
-                    trainfiles = [trainfiles[0]]
-                else:
-                    trainfiles = [trainfiles[-1]]
-                print(
-                    f'Number of train samples ({len(trainfiles)}) lower than batch size ({config.batch_size}). Repeating trainfiles {config.batch_size} times.')
-                trainfiles = trainfiles * config.batch_size
-            else:
-                if config.seed == 10:
-                    trainfiles = trainfiles[:int(len(trainfiles) * (config.percentage / 100))]
-                else:
-                    trainfiles = trainfiles[-int(len(trainfiles) * (config.percentage / 100)):]
-                if len(trainfiles) < config.batch_size:
-                    print(
-                        f'Number of train samples ({len(trainfiles)}) lower than batch size ({config.batch_size}). Repeating trainfiles 10 times.')
-                    trainfiles = trainfiles * 10
-
         # calculate dataset split index
         split_idx = int(len(trainfiles) * config.normal_split)
 
@@ -295,32 +265,42 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
             return train_dl
 
     elif not train:
-        # get list of img and mask paths
-        normal, anomal, labels_normal, labels_anomal = get_files(config, train)
 
-        # Deterministically shuffle before splitting for the case of using both sexes
-        torch.manual_seed(42)
-        idx = torch.randperm(len(normal))
-        normal = list(np.array(normal)[idx])
+        with open('/datasets/Datasets/ChestXR/chexplanation_dataset/gt_segmentation_val.json') as json_file:
+            GT_data = json.load(json_file)
 
-        idx = torch.randperm(len(anomal))
-        anomal = list(np.array(anomal)[idx])
+        patient_list = list(GT_data.keys())
 
-        # calculate split indices
-        split_idx = int(len(normal) * config.anomal_split)
-        split_idx_anomal = int(len(anomal) * config.anomal_split)
+        for idx, patient in enumerate(patient_list):
+            if patient.split('_')[-1] == 'lateral':
+                patient_list.pop(idx)
 
-        big = AnomalDataset(normal[:split_idx],
-                            anomal[:split_idx_anomal],
-                            labels_normal[:split_idx],
-                            labels_anomal[:split_idx_anomal],
-                            config)
+        pathology_list = ['Enlarged Cardiomediastinum', 'Cardiomegaly', 'Lung Lesion', 'Airspace Opacity',
+                          'Edema', 'Consolidation', 'Atelectasis', 'Pneumothorax',
+                          'Pleural Effusion', 'Support Devices']
 
-        small = AnomalDataset(normal[split_idx:],
-                              anomal[split_idx_anomal:],
-                              labels_normal[split_idx:],
-                              labels_anomal[split_idx_anomal:],
-                              config)
+        gt = []
+        paths = []
+        for i in patient_list:
+
+            pathol_list = []
+
+            for j in range(len(pathology_list)):
+                img = mask.decode(GT_data[i][pathology_list[j]])
+                if not (img == np.zeros_like(img)).all():
+                    pathol_list.append(pathology_list[j])
+                    non_zero = img
+
+            if len(pathol_list) == 1 and pathol_list[0] == 'Pleural Effusion':
+
+                gt.append(non_zero)
+                patient_num, study, fr_lat = i.split("_", 2)
+                path2 = '/datasets/Datasets/ChestXR/CheXpert-v1.0-small/valid/' + \
+                    patient_num + '/' + study + '/' + fr_lat + '.jpg'
+                paths.append(path2)
+
+        big = AnomalDataset(gt, paths, config)
+        small = big
 
         big_testloader = GenericDataloader(big, config, shuffle=False)
         small_testloader = GenericDataloader(small, config, shuffle=False)

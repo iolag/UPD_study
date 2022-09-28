@@ -26,8 +26,8 @@ from math import sqrt
 import torch
 from torch import nn
 import torch.nn.functional as F
-from swish import CustomSwish
-from ws_conv import WNConv2d
+from Models.DAE.swish import CustomSwish
+from Models.DAE.ws_conv import WNConv2d
 
 
 def get_groups(channels: int) -> int:
@@ -54,7 +54,8 @@ class UNet(nn.Module):
             wf=6,
             padding=True,
             norm="group",
-            up_mode='upconv'):
+            up_mode='upconv',
+            pretrain=False):
         """
         A modified U-Net implementation [1].
         [1] U-Net: Convolutional Networks for Biomedical Image Segmentation
@@ -93,8 +94,13 @@ class UNet(nn.Module):
             prev_channels = 2 ** (wf + i)
 
         self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=1)
+        #self.avgpool = nn.AdaptiveAvgPool2d((2, 2))
+        # ccd extra fc layer
+        self.fc = nn.Linear(512 * 16 * 16, 1024)
 
     def forward_down(self, x):
+        if x.shape[1] == 1:
+            x = x.repeat(1, 3, 1, 1)
 
         blocks = []
         for i, down in enumerate(self.down_path):
@@ -123,6 +129,11 @@ class UNet(nn.Module):
 
     def get_features(self, x):
         return self.forward_without_last(x)
+
+    def forward_down_flatten(self, x):  # ccd pre-training helper function
+        x, blocks = self.forward_down(x)
+        x = self.fc(torch.flatten(x, 1))
+        return x
 
 
 class UNetConvBlock(nn.Module):

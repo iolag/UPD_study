@@ -1,5 +1,4 @@
 import os
-
 from typing import List, Tuple
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
@@ -28,12 +27,11 @@ def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List
     ap = "AP_" if config.AP_only else ""
     sup = "sup_" if config.sup_devices else "no_sup_"
     if config.sex == 'both':
-
         file_name = f'*_normal_train_{ap}{sup}'
-
         file = glob(os.path.join(config.datasets_dir,
                                  'ChestXR/CheXpert-v1.0-small/normal_splits',
                                  file_name + '*.txt'))
+
     else:
 
         file_name = f'{config.sex}_normal_train_{ap}{sup}'
@@ -132,12 +130,13 @@ class NormalDataset(Dataset):
         config should include "image_size"
         """
 
+        self.center = config.center
         self.stadardize = config.stadardize
 
         self.files = files
 
         self.transforms = T.Compose([
-            T.Resize(config.image_size, T.InterpolationMode.LANCZOS),
+            T.Resize((config.image_size, config.image_size), T.InterpolationMode.LANCZOS),
             T.CenterCrop(config.image_size),
             T.ToTensor(),
         ])
@@ -159,7 +158,9 @@ class NormalDataset(Dataset):
 
         image = Image.open(self.files[idx])
         image = self.transforms(image)
-
+        if self.center:
+            # Center input
+            image = (image - 0.5) * 2
         if self.stadardize:
             image = self.norm(image)
 
@@ -187,10 +188,11 @@ class AnomalDataset(Dataset):
         config should include "image_size"
         """
 
+        self.center = config.center
         self.stadardize = config.stadardize
 
-        self.images = normal_paths + anomal_paths
-        self.labels = labels_normal + labels_anomal
+        self.images = anomal_paths + normal_paths
+        self.labels = labels_anomal + labels_normal
 
         self.image_transforms = T.Compose([
             T.Resize((config.image_size, config.image_size),
@@ -217,7 +219,9 @@ class AnomalDataset(Dataset):
 
         if self.stadardize:
             image = self.norm(image)
-
+        if self.center:
+            # Center input
+            image = (image - 0.5) * 2
         # for compatibility, create fake image masks to provide as labels
         # negative = zero tensor, positive = Ident tensor
         if self.labels[idx] != 0:
@@ -252,6 +256,27 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
         torch.manual_seed(42)
         idx = torch.randperm(len(trainfiles))
         trainfiles = list(np.array(trainfiles)[idx])
+
+        # percentage experiment: keep a specific percentage of the train files, or a single image.
+        # for seed != 10 (stadard seed), index the list backwards
+        if config.percentage != 100:
+            if config.percentage == -1:  # single img scenario
+                if config.seed == 10:
+                    trainfiles = [trainfiles[0]] * 500
+                else:
+                    trainfiles = [trainfiles[-1]] * 500
+                # print(
+                #     f'Number of train samples ({len(trainfiles)}) lower than batch size ({config.batch_size}). Repeating trainfiles {config.batch_size} times.')
+                # trainfiles = trainfiles * config.batch_size
+            else:
+                if config.seed == 10:
+                    trainfiles = trainfiles[:int(len(trainfiles) * (config.percentage / 100))]
+                else:
+                    trainfiles = trainfiles[-int(len(trainfiles) * (config.percentage / 100)):]
+                if len(trainfiles) < config.batch_size:
+                    print(
+                        f'Number of train samples ({len(trainfiles)}) lower than batch size ({config.batch_size}). Repeating trainfiles 10 times.')
+                    trainfiles = trainfiles * 10
 
         # calculate dataset split index
         split_idx = int(len(trainfiles) * config.normal_split)
@@ -301,7 +326,7 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
                               labels_anomal[split_idx_anomal:],
                               config)
 
-        big_testloader = GenericDataloader(big, config, shuffle=True)
-        small_testloader = GenericDataloader(small, config, shuffle=True)
+        big_testloader = GenericDataloader(big, config, shuffle=False)
+        small_testloader = GenericDataloader(small, config, shuffle=False)
 
         return big_testloader, small_testloader

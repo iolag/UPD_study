@@ -1,6 +1,7 @@
 
 import sys
-sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
+import os
+sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
 import argparse
 import torch
 import numpy as np
@@ -24,19 +25,20 @@ def get_config():
 
     parser.add_argument('--cls-augmentation', '-aug', type=str, default='cutperm',
                         help='Augmentation for the classification task',
-                        choices=['cutperm', 'rotation', 'cutout', 'noise'])
+                        choices=['cutperm', 'rotation', 'cutout', 'noise'])  # cutperm works best d
 
     parser.add_argument('--lr-schedule', '-sch', type=str_to_bool, default=True,
                         help='Train only with the SimClr task')
     parser.add_argument('--only-simclr', type=str_to_bool, default=False,
                         help='Train only with the SimClr task')
-    parser.add_argument('--backbone-arch', type=str, default='wide_resnet50_2', help='Backbone architecture.',
-                        choices=['resnet18', 'resnet50', 'wide_resnet50_2', 'vae', 'fanogan', 'vgg19'])
+    parser.add_argument('--backbone-arch', '-arch', type=str, default='wide_resnet50_2', help='Backbone',
+                        choices=['resnet18', 'resnet50', 'wide_resnet50_2',
+                                 'vae', 'fanogan', 'vgg19', 'unet', 'pii', 'amc'])
     parser.add_argument('--cls-head-number', default=2, type=int)
-    parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
+    parser.add_argument('--lr', '-lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--max-epochs', type=int, default=200, help='Number of training epochs')
-    parser.add_argument('--max-steps', type=int, default=20000, help='Number of training steps')
-    parser.add_argument('--save-checkpoint', type=int, default=100000, help='Checkpoint save frequency')
+    parser.add_argument('--max-steps', '-ms', type=int, default=20000, help='Number of training steps')
+    parser.add_argument('--save-checkpoint', type=int, default=166666, help='Checkpoint save frequency')
 
     # VAE Hyperparameters
     parser.add_argument('--latent_dim', type=int, default=512, help='Model width')
@@ -51,6 +53,12 @@ def get_config():
     parser.add_argument('--dropout', type=float, default=0.0,
                         help='Input Dropout like https://doi.org/10.1145/1390156.1390294')
 
+    # AMCons Hyperparameters
+    parser.add_argument("--zdim", default=32, type=int)
+    parser.add_argument("--dense", default=True, type=bool)
+    parser.add_argument("--n_blocks", default=4, type=int)
+    parser.add_argument("--input_shape", default=[1, 128, 128], type=list)
+
     config = parser.parse_args()
     return config
 
@@ -62,6 +70,7 @@ if config.modality == 'CXR':
     config.kl_weight = 0.0001
     config.num_layers = 6
     config.latent_dim = 256
+
     config.width = 16
     config.conv1x1 = 64
 
@@ -72,25 +81,33 @@ if config.modality == 'COL':
     config.width = 16
     config.conv1x1 = 64
 
-if config.modality == 'MRI' and config.sequence == 't1':
+if config.modality == 'MRI' and config.sequence == 't1' or config.modality == 'RF':
     config.kl_weight = 0.0001
     config.num_layers = 6
     config.latent_dim = 512
     config.width = 32
     config.conv1x1 = 64
 
-if config.modality == 'RF':
-    config.kl_weight = 0.001
-    config.num_layers = 6
-    config.latent_dim = 256
-    config.width = 16
-    config.conv1x1 = 32
+# if config.modality == 'RF':
+#     config.kl_weight = 0.001
+#     config.num_layers = 6
+#     config.latent_dim = 256
+#     config.width = 16
+#     config.conv1x1 = 32
 
 if config.backbone_arch == 'fanogan':
     config.latent_dim = 128
 
-if config.backbone_arch in ['vgg19', 'fanogan']:
+if config.backbone_arch in ['vgg19', 'fanogan', 'amc']:
     config.lr = 0.001
+
+if config.backbone_arch in ['unet']:
+    config.lr = 0.0001
+    if config.modality == 'MRI':
+        config.max_steps = 10000
+
+if config.backbone_arch in ['resnet18']:
+    config.center = True
 
 config.method = 'CCD'
 misc_settings(config)
@@ -217,7 +234,6 @@ def train_step(batch):
 
     labels = labels.to(config.device)
     labels = labels.repeat(2)
-
     loss_cla = celoss(logits, labels)
     loss_con = criterion(output)
 

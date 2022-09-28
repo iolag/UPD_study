@@ -6,10 +6,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 import torchvision.models as models
-import sys
-sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
 from Models.VAE.VAEmodel import VAE
 from Models.fanogan.GANmodel import Encoder
+from Models.DAE.unet import UNet
+from Models.PII.PIImodel import WideResNetAE
+from Models.AMCons.models import Encoder
 
 
 def backbone_architecture(config):
@@ -49,6 +50,31 @@ def backbone_architecture(config):
         backbone = model
         # 1024 instead of 128 of orig. architecture, with 128 ccd would not converge properly
         backbone.fc = nn.Linear(4 * 4 * 8 * 64, 1024)
+        return {'backbone': backbone, 'dim': 1024}
+
+    elif 'unet' == config.backbone_arch:
+        model = UNet(in_channels=3, n_classes=config.img_channels).to(config.device)
+        model.forward = model.forward_down_flatten
+        backbone = model
+        return {'backbone': backbone, 'dim': 1024}
+
+    elif 'pii' == config.backbone_arch:
+        model = WideResNetAE(config).to(config.device)
+        model.forward = model.encode
+        backbone = model
+        return {'backbone': backbone, 'dim': 1024}
+
+    elif 'amc' == config.backbone_arch:
+        model = Encoder(fin=3,
+                        zdim=config.zdim,
+                        dense=config.dense,
+                        n_blocks=config.n_blocks,
+                        spatial_dim=config.input_shape[1] // 2**config.n_blocks,
+                        variational=True,
+                        gap=False).to(config.device)
+
+        model.forward = model.forward_CCD
+        backbone = model
         return {'backbone': backbone, 'dim': 1024}
 
 

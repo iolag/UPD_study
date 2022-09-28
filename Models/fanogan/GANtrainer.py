@@ -1,5 +1,6 @@
 import sys
-sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
+import os
+sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
 from argparse import ArgumentParser
 import numpy as np
 import torch
@@ -15,7 +16,7 @@ from Utilities.utils import (set_requires_grad, load_pretrained,
                              seed_everything, load_data, load_model,
                              misc_settings, str_to_bool,
                              ssim_map, log)
-
+from scipy.ndimage import gaussian_filter
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
 
@@ -31,9 +32,9 @@ def get_config():
     parser.add_argument('--feat_weight', type=float, default=1.,
                         help='Feature reconstruction weight during encoder training')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='Weight decay')
-    parser.add_argument('--max_steps_gan', type=int, default=30000, help='Number of training steps')
+    parser.add_argument('--max_steps_gan', type=int, default=10000, help='Number of training steps')
     parser.add_argument('--max_steps_encoder', type=int, default=10000, help='Number of training steps')
-    parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+    parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
 
     # Model settings : for consistency with the original f-anogan method
     # dim and latent_dim are the same for the Encoder and Discriminator
@@ -54,6 +55,9 @@ def get_config():
 
 
 config = get_config()
+
+if config.modality == 'MRI':
+    config.max_steps_gan = 30000
 
 config.method = 'f-anoGAN'
 
@@ -102,7 +106,16 @@ if config.load_pretrained and not config.eval:
     config.arch = 'fanogan'
     model.E = load_pretrained(model.E, config)
 
+if config.speed_benchmark:
+    from torchinfo import summary
+    a = summary(model.E, (16, 1, 128, 128), verbose=0)
+    b = summary(model.D, (16, 1, 128, 128), verbose=0)
+    c = summary(model.G, input_data=[torch.randn(16, config.latent_dim).cuda(), 16], verbose=0)
 
+    params = a.total_params + b.total_params + c.total_params
+    macs = a.total_mult_adds + b.total_mult_adds + c.total_mult_adds
+    print('Number of Million parameters: ', params / 1e06)
+    print('Number of GMACs: ', macs / 1e09)
 """"""""""""""""""""""""""""""""" GAN Training """""""""""""""""""""""""""""""""
 
 
@@ -135,7 +148,7 @@ def train_step_gan(x_real) -> Tuple[dict, Tensor]:
     loss_D = adv_loss_d + config.gp_weight * loss_gp
     loss_D.backward()
     optimizer_d.step()
-    if iter % config.critic_iters == 0:
+    if config.step % config.critic_iters == 0:
         """ 2. Train Generator, maximize log(D(G(z))) """
         set_requires_grad(model.D, False)
         set_requires_grad(model.G, True)
@@ -341,7 +354,7 @@ def train_encoder():
             if config.step % config.enc_val_frequency == 0:
                 _ = validate_encoder()
 
-            if config.step % config.anom_val_frequency == 0:
+            if config.step % config.anom_val_frequency == 0 or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
                 evaluate(config, small_testloader, val_step_encoder, val_loader)
 
             if config.step >= config.max_steps_encoder:
@@ -386,12 +399,17 @@ def val_step_encoder(input, return_loss: bool = True):
         else:
             anomaly_map = (input - input_recon).abs().mean(1, keepdim=True)
 
+        if config.gaussian_blur:
+            anomaly_map = anomaly_map.cpu().numpy()
+            for i in range(anomaly_map.shape[0]):
+                anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=4)
+            anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
         if config.modality in ['MRI', 'CT']:
             mask = torch.cat([inp > inp.min() for inp in input]).unsqueeze(1)
             anomaly_map *= mask
-        elif config.modality in ['RF']:
-            mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
-            anomaly_map *= mask
+        # elif config.modality in ['RF']:
+        #     mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
+        #     anomaly_map *= mask
 
         # Anomaly score
         if config.ssim_eval:
@@ -399,18 +417,21 @@ def val_step_encoder(input, return_loss: bool = True):
         else:
             img_diff = (input - input_recon).pow(2)
 
+        if config.gaussian_blur:
+            img_diff = img_diff.cpu().numpy()
+            for i in range(img_diff.shape[0]):
+                img_diff[i] = gaussian_filter(img_diff[i], sigma=4)
+            img_diff = torch.from_numpy(img_diff).to(config.device)
+
         if config.modality in ['MRI', 'CT']:
             mask = torch.cat([inp > inp.min() for inp in input]).unsqueeze(1)
             img_diff *= mask
-            img_score = torch.tensor([map[inp > inp.min()].mean() for map, inp in zip(img_diff, input)])
+            img_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(img_diff, input)])
 
-        elif config.modality in ['RF']:
-            mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
-            img_diff *= mask
-            img_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
-                                     for map, inp in zip(img_diff, input)])
+        elif config.modality in ['RF'] and config.dataset == 'DDR':
+            img_score = torch.tensor([map.max() for map in anomaly_map])
         else:
-            img_score = torch.tensor([map.mean() for map in img_diff])
+            img_score = torch.tensor([map.mean() for map in anomaly_map])
 
         feat_diff = (x_feats - x_rec_feats).pow(2).mean((1))
         anomaly_score = img_score.to(config.device) + config.feat_weight * feat_diff
@@ -464,13 +485,13 @@ if __name__ == '__main__':
     if config.eval:
         print('Evaluating model...')
         evaluate(config, big_testloader, val_step_encoder, val_loader)
+    else:
+        if config.train_gan:
+            train_gan()
 
-    if config.train_gan:
-        train_gan()
+        if config.train_gan and config.train_encoder:
+            # reinit logger if we train both gan and enc in a single run
+            misc_settings(config)
 
-    if config.train_gan and config.train_encoder:
-        # reinit logger if we train both gan and enc in a single run
-        misc_settings(config)
-
-    if config.train_encoder:
-        train_encoder()
+        if config.train_encoder:
+            train_encoder()

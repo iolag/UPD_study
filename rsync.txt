@@ -1,0 +1,1 @@
+rsync -zar --include="*/" --include="*.py" --exclude="*" /u/home/lagi/thesis/UAD_study ioannis@100.118.39.65:~/thesis/

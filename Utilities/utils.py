@@ -1,7 +1,6 @@
-
-import sys
 import os
-sys.path.append('/data_ssd/users/lagi/thesis/UAD_study/')
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
 import numpy as np
 import torch
 from torchvision import transforms as T
@@ -28,13 +27,20 @@ def load_pretrained(model, config):
     pretrained = f'CCD_{config.arch}_{config.modality}'
     if config.modality == 'MRI':
         pretrained += f'_{config.sequence}'
-    pretrained += f'_{config.name_add}'
+    # if config.modality == 'RF':
+    #     pretrained += f'_{config.dataset}'
+    pretrained += f'_{config.name_add}_seed:{config.seed}'
+    # if config.load_iter != "":
+    #     pretrained += f"_"
 
     if config.arch == 'vae':
         enc_dict = model.encoder.state_dict()
         pretrained_dict = torch.load(
             f'/u/home/lagi/thesis/UAD_study/Models/CCD/saved_models/{config.modality}/{pretrained}_encoder_.pth')
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in enc_dict}
+        for k, v in enc_dict.items():
+            if k not in pretrained_dict:
+                print(f'weights for {k} not in pretrained weight state_dict()')
         enc_dict.update(pretrained_dict)
         model.encoder.load_state_dict(enc_dict)
         bn_dict = model.bottleneck.state_dict()
@@ -51,11 +57,20 @@ def load_pretrained(model, config):
 
         model_dict = model.state_dict()
         pretrained_dict = torch.load(
-            f'/u/home/lagi/thesis/UAD_study/Models/CCD/saved_models/{config.modality}/{pretrained}_.pth')
-
+            f'/u/home/lagi/thesis/UAD_study/Models/CCD/saved_models/{config.modality}/{pretrained}_{config.load_iter}.pth')
+        # print(pretrained_dict)
+        # print(pretrained_dict.keys())
         for k, v in model_dict.items():
             if k not in pretrained_dict:
                 print(f'weights for {k} not in pretrained weight state_dict()')
+        if config.method == 'FAE':
+            layer_0_dict = model.layer0[0].state_dict()
+            # print(layer_0_dict)
+            pretrained_dict_layer_0 = {'weight': v for k,
+                                       v in pretrained_dict.items() if k == 'conv1.weight'}
+            layer_0_dict.update(pretrained_dict_layer_0)
+            model.layer0[0].load_state_dict(layer_0_dict)
+            print('loaded weights for layer0.0.weight which is a conv layer, rest are BN related')
 
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
         model_dict.update(pretrained_dict)
@@ -64,7 +79,7 @@ def load_pretrained(model, config):
         if config.method == 'f-anoGAN':
             model.fc = nn.Linear(4 * 4 * 8 * config.dim, config.latent_dim).to(config.device)
 
-        print('Pretrained backbone loaded.')
+        print(f'Pretrained backbone {pretrained} loaded.')
     return model
 
 
@@ -80,7 +95,11 @@ def save_model(model, config, i_iter: Union[int, str] = ""):
                    f'saved_models/{config.modality}/{config.name}_encoder_{i_iter}.pth')
         torch.save(model['bottleneck'].state_dict(),
                    f'saved_models/{config.modality}/{config.name}_bottleneck_{i_iter}.pth')
-
+    elif config.method == 'AMCons':
+        torch.save(model['encoder'].state_dict(),
+                   f'saved_models/{config.modality}/{config.name}_enc_{i_iter}.pth')
+        torch.save(model['decoder'].state_dict(),
+                   f'saved_models/{config.modality}/{config.name}_dec_{i_iter}.pth')
     else:
         torch.save(model.state_dict(), f'saved_models/{config.modality}/{config.name}_{i_iter}.pth')
 
@@ -93,19 +112,59 @@ def load_model(config):
         load_bn = torch.load(f'saved_models/{config.modality}/{config.name}_bn_{config.load_iter}.pth')
         return load_dec, load_bn
 
+    elif config.method == 'AMCons':
+
+        load_enc = torch.load(f'saved_models/{config.modality}/{config.name}_enc_{config.load_iter}.pth')
+        load_dec = torch.load(f'saved_models/{config.modality}/{config.name}_dec_{config.load_iter}.pth')
+        return load_enc, load_dec
+
     elif config.method == 'f-anoGAN':
-
-        if config.eval:
-            load_g = torch.load(f'saved_models/{config.modality}/{config.name}_netG.pth'.replace('_CCD', ''))
-            load_d = torch.load(f'saved_models/{config.modality}/{config.name}_netD.pth'.replace('_CCD', ''))
-            load_e = torch.load(f'saved_models/{config.modality}/{config.name}_netE.pth')
-            return load_g, load_d, load_e
-        # the 2 distinct run scenario where wgan is already trained and we want to train encoder
+        if config.modality == 'CXR':
+            if config.eval:
+                load_g = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}__seed:10_netG.pth'.replace('_CCD', ''))
+                load_d = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}__seed:10_netD.pth'.replace('_CCD', ''))
+                load_e = torch.load(f'saved_models/{config.modality}/{config.name}_netE.pth')
+                return load_g, load_d, load_e
+            # the 2 distinct run scenario where wgan is already trained and we want to train encoder
+            else:
+                load_g = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}__seed:10_netG.pth'.replace('_CCD', ''))
+                load_d = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}__seed:10_netD.pth'.replace('_CCD', ''))
+                return load_g, load_d
+        elif config.modality == 'RF' and config.dataset == 'DDR':
+            if config.eval:
+                load_g = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_DDR_seed:10_netG.pth'.replace('_CCD', ''))
+                load_d = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_DDR_seed:10_netD.pth'.replace('_CCD', ''))
+                load_e = torch.load(f'saved_models/{config.modality}/{config.name}_netE.pth')
+                return load_g, load_d, load_e
+            # the 2 distinct run scenario where wgan is already trained and we want to train encoder
+            else:
+                load_g = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_DDR_seed:10_netG.pth'.replace('_CCD', ''))
+                load_d = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_DDR_seed:10_netD.pth'.replace('_CCD', ''))
+                return load_g, load_d
         else:
-            load_g = torch.load(f'saved_models/{config.modality}/{config.name}_netG.pth'.replace('_CCD', ''))
-            load_d = torch.load(f'saved_models/{config.modality}/{config.name}_netD.pth'.replace('_CCD', ''))
-            return load_g, load_d
 
+            if config.eval:
+                load_g = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_{config.sequence}__seed:10_netG.pth'.replace('_CCD', ''))
+                load_d = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_{config.sequence}__seed:10_netD.pth'.replace('_CCD', ''))
+                load_e = torch.load(f'saved_models/{config.modality}/{config.name}_netE.pth')
+                return load_g, load_d, load_e
+            # the 2 distinct run scenario where wgan is already trained and we want to train encoder
+            else:
+                load_g = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_{config.sequence}__seed:10_netG.pth'.replace('_CCD', ''))
+                load_d = torch.load(
+                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_{config.sequence}__seed:10_netD.pth'.replace('_CCD', ''))
+                return load_g, load_d
     else:
         return torch.load(f'saved_models/{config.modality}/{config.name}_{config.load_iter}.pth')
 
@@ -117,21 +176,29 @@ def set_requires_grad(model, requires_grad: bool) -> None:
 
 def misc_settings(config):
     """
+    Various settings set right after argument parsing, before loading datasets.
     """
-    # msg = "num_images_log should be lower or equal to batch size"
-    # assert (config.batch_si   ze >= config.num_images_log), msg
-    if config.modality == 'RF':
-        config.stadardize = True
 
-    if not config.limited_metrics:
-        config.f1_normal = True
-        config.dice_normal = True
-        config.normal_fpr = True
+    config.datasets_dir = os.path.join(os.path.expanduser('~/thesis/UAD_study/'), config.datasets_dir)
 
-        # Select training device
+    if config.get_images:
+        config.num_images_log = 35
+        config.anomal_split = 0.999
+        config.shuffle = False
+
+    # Select training device
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    print(f"Training on {config.device}")
+    if config.speed_benchmark:
+        config.modality = 'CXR'
+        config.disable_wandb = True
+        config.eval = True
+        config.seed = 10
+
+    if not config.eval:
+        config.limited_metrics = True
+
+    print(f"Using {config.device}.")
 
     # Multi purpose model name string
     if config.method == 'CCD':
@@ -142,27 +209,67 @@ def misc_settings(config):
     if config.modality == 'MRI':
         name += f'_{config.sequence}'
 
+    # if config.sequence == 't1' and config.brats_t1:
+    #     name += '_brats'
+
     if config.load_pretrained:
         name += '_CCD'
+    if config.modality == 'RF':
+        config.img_channels = 3
+    if config.modality == 'RF' and config.dataset == 'LAG' and config.method != 'f-anoGAN':
+        config.stadardize = True
+    elif config.modality == 'RF' and config.dataset == 'DDR' and config.method != 'f-anoGAN':
+        if config.method != 'AMCons':
+            config.center = True
+        #name += '_DDR'
 
-    name += f'_{config.name_add}'
+    if config.percentage != 100:
+
+        config.limited_metrics = True
+
+        if config.percentage == -1:
+            name += '_percentage:single_sample'
+        else:
+            name += f'_percentage:{config.percentage}'
+
+    if config.atlas_exp:
+        config.disable_wandb = True
+        config.eval = True
+        config.seed = 10
+        config.center = False
+        #config.slice_range = (20, 135)
+        os.makedirs('/u/home/lagi/thesis/UAD_study/statistics/', exist_ok=True)
+
+    name += f'_{config.name_add}_seed:{config.seed}'
 
     # create saved_models folder
     os.makedirs(f'saved_models/{config.modality}', exist_ok=True)
 
     # init wandb logger
-    if not config.eval and not config.disable_wandb:
-        logger = wandb.init(project=config.method, name=name, config=config, reinit=True)
-    if config.eval and not config.disable_wandb:
-        logger = wandb.init(project=config.method, name=f'{name}_eval', config=config, reinit=True)
-    if config.disable_wandb:
-        logger = wandb.init(mode="disabled")
-
+    if not config.get_images:
+        if not config.eval and not config.disable_wandb:
+            logger = wandb.init(project=config.method, name=name, config=config, reinit=True)
+        if config.eval and not config.disable_wandb:
+            logger = wandb.init(project=config.method, name=f'{name}_eval', config=config, reinit=True)
+        if config.disable_wandb:
+            logger = wandb.init(mode="disabled")
+        if config.method == 'VAE':
+            if config.restoration:
+                logger = wandb.init(project='r-' + config.method, name='r-' +
+                                    name, config=config, reinit=True)
+    # if config.sequence == 't1' and config.brats_t1:
+    #     logger = wandb.init(project='r-' + config.method, name=name + '_brats', config=config, reinit=True)
+    # elif config.sequence == 't1' and not config.brats_t1:
+    #     logger = wandb.init(project='r-' + config.method, name=name + '_atlas', config=config, reinit=True)
+    if config.get_images:
+        config.device = 'cpu'
+        config.eval = True
+        logger = wandb.init(project='images', name=name, config=config, reinit=True)
     # keep name, logger, step in config to pass them around
     config.name = name
     config.logger = logger
     config.step = 0
-
+    print(name)
     return
 
 
@@ -215,12 +322,12 @@ def metrics(config: Namespace, anomaly_maps: list = None, segmentations: list = 
         print(f"sample-wise average precision: {sample_ap:.4f}")
         sample_auroc = compute_auroc(torch.cat(anomaly_scores), torch.cat(labels))
         print(f"sample-wise AUROC: {sample_auroc:.4f}\n")
-        best_f1, _ = compute_best_dice(torch.cat(anomaly_scores), torch.cat(labels))
-        print(f"Best F1-score for 100 thresholds: {best_f1:.4f}\n")
+        # best_f1, _ = compute_best_dice(torch.cat(anomaly_scores), torch.cat(labels))
+        # print(f"Best F1-score for 100 thresholds: {best_f1:.4f}\n")
 
         log({'anom_val/sample_ap': sample_ap,
-            'anom_val/sample-auroc': sample_auroc,
-             'anom_val/best-F1': best_f1}, config)
+            'anom_val/sample-auroc': sample_auroc}, config)
+        # 'anom_val/best-F1': best_f1}, config)
 
     # pixel-wise metrics
     if segmentations is not None:
@@ -235,14 +342,14 @@ def metrics(config: Namespace, anomaly_maps: list = None, segmentations: list = 
             print(f"pixel-wise average precision: {pixel_ap:.4f}")
             best_dice, threshold = compute_best_dice(torch.cat(anomaly_maps), torch.cat(segmentations))
             print(f"Best Dice score for 100 thresholds: {best_dice:.4f}")
-            dice_5fpr = compute_dice_at_nfpr(torch.cat(anomaly_maps), torch.cat(segmentations))
-            print(f"Dice score at 5% FPR: {dice_5fpr:.4f}")
-            pixel_auroc = compute_auroc(torch.cat(anomaly_maps), torch.cat(segmentations))
-            print(f"pixel-wise AUROC: {pixel_auroc:.4f}\n")
+            # dice_5fpr = compute_dice_at_nfpr(torch.cat(anomaly_maps), torch.cat(segmentations))
+            # print(f"Dice score at 5% FPR: {dice_5fpr:.4f}")
+            # pixel_auroc = compute_auroc(torch.cat(anomaly_maps), torch.cat(segmentations))
+            # print(f"pixel-wise AUROC: {pixel_auroc:.4f}\n")
 
             log({'anom_val/pixel-ap': pixel_ap,
-                'anom_val/pixel-auroc': pixel_auroc,
-                 'anom_val/dice-5fpr': dice_5fpr,
+                 #  'anom_val/pixel-auroc': pixel_auroc,
+                # 'anom_val/dice-5fpr': dice_5fpr,
                  'anom_val/best-dice': best_dice},
                 config)
 
@@ -441,112 +548,116 @@ def load_data(config):
     """
 
     # conditional import for dataloaders according to modality
-    if config.method == 'PII':
+    if config.method == 'PII' and not config.get_images:
         if config.modality == 'MRI':
             from Dataloaders.PII_MRI import get_dataloaders
-        elif config.modality == 'COLvid':
-            from Dataloaders.PII_COL import get_dataloaders
-            config.img_channels = 3
+        # elif config.modality == 'COLvid':
+        #     from Dataloaders.PII_COL import get_dataloaders
+        #     config.img_channels = 3
         elif config.modality == 'CXR':
             from Dataloaders.PII_CXR import get_dataloaders
         elif config.modality == 'RF':
             from Dataloaders.PII_RF import get_dataloaders
-            config.img_channels = 3
+    elif config.get_images and config.modality in ['MRI', 'CXR']:
+        if config.modality == 'MRI':
+            from Dataloaders.MRIimages import get_dataloaders
+        if config.modality == 'CXR':
+            from Dataloaders.CXRimages import get_dataloaders
     else:
-        if config.modality == 'MRInoram':
-            from Dataloaders.MRI_noram import get_dataloaders
-        elif config.modality == 'MRI':
+        if config.modality == 'MRI':
             from Dataloaders.MRI import get_dataloaders
-        elif config.modality == 'OCT':
-            from Dataloaders.OCT import get_dataloaders
-        elif config.modality == 'COLvid':
-            from Dataloaders.COLvid import get_dataloaders
-            config.img_channels = 3
-        elif config.modality == 'COL':
-            from Dataloaders.COL import get_dataloaders
-            config.img_channels = 3
-        elif config.modality == 'CT':
-            from Dataloaders.CT import get_dataloaders
+        # elif config.modality == 'OCT':
+        #     from Dataloaders.OCT import get_dataloaders
+        # elif config.modality == 'COLvid':
+        #     from Dataloaders.COLvid import get_dataloaders
+        #     config.img_channels = 3
+        # elif config.modality == 'COL':
+        #     from Dataloaders.COL import get_dataloaders
+        #     config.img_channels = 3
+        # elif config.modality == 'CT':
+        #     from Dataloaders.CT import get_dataloaders
         elif config.modality == 'CXR':
             from Dataloaders.CXR import get_dataloaders
         elif config.modality == 'RF':
             from Dataloaders.RF import get_dataloaders
-            config.img_channels = 3
 
     # msg = "num_images_log should be lower or equal to batch size"
     # assert (config.batch_size >= config.num_images_log), msg
-
+    import torch
     print("Loading data...")
     t_load_data_start = time()
 
-    if config.modality == 'CT':
-        train_loader, val_loader, big_testloader, small_testloader = get_dataloaders(config)
+    # if config.modality == 'CT':
+    #     train_loader, val_loader, big_testloader, small_testloader = get_dataloaders(config)
 
-        print('Training set: {} samples, Valid set: {} samples'.format(
-            len(train_loader.dataset),
-            len(val_loader.dataset),
-        ))
+    #     print('Training set: {} samples, Valid set: {} samples'.format(
+    #         len(train_loader.dataset),
+    #         len(val_loader.dataset),
+    #     ))
+    #     print('Big test-set: {} samples, Small test-set: set: {} samples.'.format(
+    #         len(big_testloader.dataset),
+    #         len(small_testloader.dataset),
+    #     ))
+
+    #     print(f'Loaded datasets in {time() - t_load_data_start:.2f}s')
+    #     return train_loader, val_loader, big_testloader, small_testloader
+    # else:
+    # For testloaders make batch_size equal to num_images_log, the number of images to log on wandb.
+    # In evaluate.py there is the need to run through the dataloader once to calc threshold
+    # when running through it again to produce and log images, it is more convenient to do it through
+    # a single testloader iteration, instead of doing many testloader iterations until we aggregate the desired
+    # number of images we want to log.
+
+    temp = config.batch_size
+    if config.method != 'DFR' or config.get_images:
+        config.batch_size = config.num_images_log
+
+    if config.anomal_split == 1.0:
+        testloader = get_dataloaders(config, train=False)
+        small_testloader = testloader
+        big_testloader = testloader
+        print(f'Test-set: {len(testloader.dataset)} samples.')
+        msg = "batch_size too high, Testloader is empty."
+        assert (len(testloader) != 0), msg
+
+    else:
+
+        big_testloader, small_testloader = get_dataloaders(config, train=False)
+
         print('Big test-set: {} samples, Small test-set: set: {} samples.'.format(
             len(big_testloader.dataset),
             len(small_testloader.dataset),
         ))
 
-        print(f'Loaded datasets in {time() - t_load_data_start:.2f}s')
-        return train_loader, val_loader, big_testloader, small_testloader
-    else:
-        # For testloaders make batch_size equal to num_images_log, the number of images to log on wandb.
-        # In evaluate.py there is the need to run through the dataloader once to calc threshold
-        # when running through it again to produce and log images, it is more convenient to do it through
-        # a single testloader iteration, instead of doing many testloader iterations until we aggregate the desired
-        # number of images we want to log.
-        temp = config.batch_size
-        config.batch_size = config.num_images_log
+        msg = "anomal_split is too high or batch_size too high, Small testloader is empty."
+        assert (len(small_testloader) != 0), msg
 
-        if config.anomal_split == 1.0:
-            testloader = get_dataloaders(config, train=False)
-            small_testloader = testloader
-            big_testloader = testloader
-            print(f'Test-set: {len(testloader.dataset)} samples.')
-            msg = "batch_size too high, Testloader is empty."
-            assert (len(testloader) != 0), msg
+    if not config.eval or config.normal_fpr or config.method in ['DFR', 'CFLOW-AD']:
+        # restore desired batch_size
+        config.batch_size = temp
 
+        if config.normal_split == 1.0:
+            train_loader = get_dataloaders(config)
+            print('Training set: {} samples'.format(
+                len(train_loader.dataset)
+            ))
+            train_loader = train_loader
+            val_loader = train_loader
         else:
-
-            big_testloader, small_testloader = get_dataloaders(config, train=False)
-
-            print('Big test-set: {} samples, Small test-set: set: {} samples.'.format(
-                len(big_testloader.dataset),
-                len(small_testloader.dataset),
+            train_loader, val_loader = get_dataloaders(config)
+            print('Training set: {} samples, Valid set: {} samples'.format(
+                len(train_loader.dataset),
+                len(val_loader.dataset),
             ))
 
-            msg = "anomal_split is too high or batch_size too high, Small testloader is empty."
-            assert (len(small_testloader) != 0), msg
+        print(f'Loaded datasets in {time() - t_load_data_start:.2f}s')
 
-        if not config.eval or config.normal_fpr:
-            # restore desired batch_size
-            config.batch_size = temp
+        return train_loader, val_loader, big_testloader, small_testloader
 
-            if config.normal_split == 1.0:
-                train_loader = get_dataloaders(config)
-                print('Training set: {} samples'.format(
-                    len(train_loader.dataset)
-                ))
-                train_loader = train_loader
-                val_loader = train_loader
-            else:
-                train_loader, val_loader = get_dataloaders(config)
-                print('Training set: {} samples, Valid set: {} samples'.format(
-                    len(train_loader.dataset),
-                    len(val_loader.dataset),
-                ))
+    else:
 
-            print(f'Loaded datasets in {time() - t_load_data_start:.2f}s')
-            return train_loader, val_loader, big_testloader, small_testloader
-
-        else:
-
-            print(f'Loaded datasets in {time() - t_load_data_start:.2f}s')
-            return None, None, big_testloader, small_testloader
+        print(f'Loaded datasets in {time() - t_load_data_start:.2f}s')
+        return None, None, big_testloader, small_testloader
 
 
 # def create_wandb_images(residual_tensor: Tensor,
