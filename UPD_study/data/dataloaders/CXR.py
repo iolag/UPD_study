@@ -208,6 +208,7 @@ class AnomalDataset(Dataset):
         if self.center:
             # Center input
             image = (image - 0.5) * 2
+
         # for compatibility with downstream methods that assume the existance
         # of ground truth segmentation, create fake image masks to provide as labels
         # negative = zero tensor, positive = Ident tensor
@@ -244,7 +245,8 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
         idx = torch.randperm(len(trainfiles))
         trainfiles = list(np.array(trainfiles)[idx])
 
-        # percentage experiment: keep a specific percentage of the train files, or a single image.
+        # percentage experiment
+        # keep a specific percentage of the train files, or a single image.
         # for seed != 10 (stadard seed), index the list backwards
         if config.percentage != 100:
             if config.percentage == -1:  # single img scenario
@@ -252,9 +254,9 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
                     trainfiles = [trainfiles[0]] * 500
                 else:
                     trainfiles = [trainfiles[-1]] * 500
-                # print(
-                #     f'Number of train samples ({len(trainfiles)}) lower than batch size ({config.batch_size}). Repeating trainfiles {config.batch_size} times.')
-                # trainfiles = trainfiles * config.batch_size
+                print(
+                    f'Number of train samples ({len(trainfiles)}) lower than ',
+                    f'batch size ({config.batch_size}). Repeating trainfiles 500 times.')
             else:
                 if config.seed == 10:
                     trainfiles = trainfiles[:int(len(trainfiles) * (config.percentage / 100))]
@@ -262,7 +264,8 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
                     trainfiles = trainfiles[-int(len(trainfiles) * (config.percentage / 100)):]
                 if len(trainfiles) < config.batch_size:
                     print(
-                        f'Number of train samples ({len(trainfiles)}) lower than batch size ({config.batch_size}). Repeating trainfiles 10 times.')
+                        f'Number of train samples ({len(trainfiles)}) lower than ',
+                        'batch size ({config.batch_size}). Repeating trainfiles 10 times.')
                     trainfiles = trainfiles * 10
 
         # calculate dataset split index

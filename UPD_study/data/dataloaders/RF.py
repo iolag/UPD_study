@@ -1,9 +1,8 @@
 import os
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms as T
-import numpy as np
 from torch import Tensor
 from argparse import Namespace
 from UPD_study.utilities.utils import GenericDataloader
@@ -13,9 +12,11 @@ from multiprocessing import Pool, cpu_count
 from functools import partial
 
 
-def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List]:
+def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, ...]]:
     """
-    Return a list of all the paths of normal files.
+
+    tran == True: Return a list of  paths of normal samples.
+    train == False:  Return a list of  paths of normal samples.
 
     Args:
         config (Namespace): configuration object
@@ -24,95 +25,48 @@ def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List
         images (List): List of paths of normal files.
         masks (List): (If train == True) List of paths of segmentations.
 
-    config should include "datasets_dir", "sex", "AP_only", "sup_devices"
     """
 
-    if config.dataset == 'DDR':
-        norm_paths = sorted(
-            glob(os.path.join(config.datasets_dir, 'DDR-dataset', 'healthy', '*.jpg')))
-        anom_paths = sorted(glob(os.path.join(config.datasets_dir,
-                            'DDR-dataset', 'unhealthy', 'images', '*.png')))
+    norm_paths = sorted(
+        glob(os.path.join(config.datasets_dir, 'DDR', 'healthy', '*.jpg')))
+    anom_paths = sorted(glob(os.path.join(config.datasets_dir,
+                        'DDR', 'unhealthy', 'images', '*.png')))
 
-        segmentations = sorted(glob(os.path.join(config.datasets_dir, 'DDR-dataset',
-                               'unhealthy', 'segmentations', '*.png')))
-        if train:
-            return norm_paths[757:]
-        else:
-            return norm_paths[:733], anom_paths, [0] * 733, [1] * 757, segmentations
-
-    elif config.dataset == 'LAG':
-
-        paths = sorted(glob(os.path.join(config.datasets_dir,
-                                         'Retinal Fundus',
-                                         'LAG',
-                                         'non_glaucoma/image',
-                                         '*.jpg')))
-
-        if train:
-            return paths[500:]  # 500 normal samples held for testset
-
-        anom_paths = sorted(glob(os.path.join(config.datasets_dir,
-                                              'Retinal Fundus',
-                                              'LAG',
-                                              'suspicious_glaucoma/image',
-                                              '*.jpg')))
-        attention_maps_anom = sorted(glob(os.path.join(config.datasets_dir,
-                                                       'Retinal Fundus',
-                                                       'LAG',
-                                                       'suspicious_glaucoma/attention_map',
-                                                       '*.jpg')))
-        return paths[:500], anom_paths[:500], [0] * 500, [1] * 500, attention_maps_anom
+    segmentations = sorted(glob(os.path.join(config.datasets_dir, 'DDR',
+                                             'unhealthy', 'segmentations', '*.png')))
+    if train:
+        return norm_paths[757:]
+    else:
+        # In  the Dataset class bellow, 12 positive samples get a completely blank
+        # segmentation due to downsampling. These are effectively negative samples and
+        # considered such during the evaluation. Due to that, we return 733 normal
+        # samples, so that end up with effectively 745 positive and 745 negative samples
+        return norm_paths[:733], anom_paths, [0] * 733, [1] * 757, segmentations
 
 
 class NormalDataset(Dataset):
     """
-    Dataset class for the Healthy CXR images
-    from CheXpert Dataset.
+    Dataset class for the training set
     """
 
     def __init__(self, files: List, config: Namespace):
         """
         Args
-            files: list of image paths for healthy colonoscopy images
+            files: list of image paths for healthy RF images
             config: Namespace() config object
 
-        config should include "image_size"
         """
-        self.stadardize = config.stadardize
 
         self.files = files
         self.center = config.center
-        self.preload_files = config.dataset == 'DDR'
         self.transforms = T.Compose([
             T.Resize((config.image_size), T.InterpolationMode.LANCZOS),
             T.CenterCrop((config.image_size)),
             T.ToTensor(),
         ])
-        if config.dataset in ['KAGGLE', 'IDRID']:
-            mean = np.array([0.4662, 0.3328, 0.2552])
-            std = np.array([0.2841, 0.2092, 0.1733])
-        else:
-            mean = np.array([0.5013, 0.3156, 0.2091])
-            std = np.array([0.2052, 0.1535, 0.1185])
 
-        self.norm = T.Normalize(mean, std)
-
-        if self.preload_files:
-
-            with Pool(cpu_count()) as pool:
-                self.preload = pool.map(partial(self.load_file), files)
-
-            # self.preload = []
-            # for file in tqdm(files, desc="Preloading dataset to RAM:"):
-            #     image = Image.open(file)
-            #     image = self.transforms(image)
-            #     if self.stadardize:
-            #         image = self.norm(image)
-
-            #     if self.center:
-            #         # Center input
-            #         image = (image - 0.5) * 2
-            #     self.preload.append(image)
+        with Pool(cpu_count()) as pool:
+            self.preload = pool.map(partial(self.load_file), files)
 
     def load_file(self, file):
 
@@ -140,27 +94,16 @@ class NormalDataset(Dataset):
             return self.preload[idx]
         else:
             image = Image.open(self.files[idx])
-            # image = np.asarray(image)
-            # for c in range(3):
-            #     image[:, :, c] = self.clahe(image=image[:, :, c])['image']
-            #     image[:, :, c] = Image.fromarray(image[:, :, c])
-            #     #image[:,:,c]= self.clahe(image[:,:,c])
-            # image = Image.fromarray(image)
             image = self.transforms(image)
-            if self.stadardize:
-                image = self.norm(image)
-
+            # Center input
             if self.center:
-                # Center input
                 image = (image - 0.5) * 2
-
             return image
 
 
 class AnomalDataset(Dataset):
     """
-    Dataset class for the Segmented Colonoscopy
-    images from the Hyper-Kvasir Dataset.
+    Dataset class for the evaluation set.
     """
 
     def __init__(self,
@@ -179,10 +122,8 @@ class AnomalDataset(Dataset):
         config should include "image_size"
         """
 
-        self.stadardize = config.stadardize
         self.center = config.center
         self.segmentations = segmentations
-        self.dataset = config.dataset
         self.images = anomal_paths + normal_paths
         self.labels = labels_anomal + labels_normal
         self.image_transforms = T.Compose([
@@ -197,18 +138,6 @@ class AnomalDataset(Dataset):
             T.ToTensor()
         ])
 
-        if config.dataset in ['KAGGLE', 'IDRID']:
-            mean = np.array([0.4662, 0.3328, 0.2552])
-            std = np.array([0.2841, 0.2092, 0.1733])
-        elif config.dataset == 'DDR':
-            mean = np.array([0.3835, 0.2741, 0.1746])
-            std = np.array([0.2831, 0.2082, 0.1572])
-        else:
-            mean = np.array([0.5013, 0.3156, 0.2091])
-            std = np.array([0.2052, 0.1535, 0.1185])
-
-        self.norm = T.Normalize(mean, std)
-
     def __len__(self):
         return len(self.images)
 
@@ -219,31 +148,12 @@ class AnomalDataset(Dataset):
         """
 
         image = Image.open(self.images[idx])
-        # image = np.asarray(image)
-        # for c in range(3):
-        #     image[:, :, c] = self.clahe(image=image[:, :, c])['image']
-        #     image[:, :, c] = Image.fromarray(image[:, :, c])
-        #     #image[:,:,c]= self.clahe(image[:,:,c])
-        # image = Image.fromarray(image)
         image = self.image_transforms(image)
-
-        if self.stadardize:
-            image = self.norm(image)
-
+        # Center input
         if self.center:
-            # Center input
             image = (image - 0.5) * 2
 
-        # for compatibility, create image-like pixel masks to use as labels
-        # should have 1 channel dim to be consistent with pixel AP calc
-
-        # if self.dataset == 'IDRID':
-        #     if self.labels[idx] == 0:
-        #         mask = torch.zeros_like(image)[0].unsqueeze(0)
-        #     else:
-        #         mask = Image.open(self.labels[idx])
-        #         mask = self.mask_transforms(mask)
-        # else:
+        # for healthy RF samples, create empty mask
         if self.labels[idx] == 0:
             segmentation = torch.zeros_like(image)[0].unsqueeze(0)
         else:
@@ -281,11 +191,7 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
                     trainfiles = [trainfiles[0]] * 500
                 else:
                     trainfiles = [trainfiles[-1]] * 500
-                # print(
-                #     f'Number of train samples ({len(trainfiles)})',
-                #     f' lower than batch size ({config.batch_size}).',
-                #     f' Repeating trainfiles {config.batch_size} times.')
-                # trainfiles = trainfiles * config.batch_size
+
             else:
                 if config.seed == 10:
                     trainfiles = trainfiles[:int(len(trainfiles) * (config.percentage / 100))]
@@ -320,15 +226,6 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
     elif not train:
         # get list of img and mask paths
         normal, anomal, labels_normal, labels_anomal, segmentations = get_files(config, train)
-
-        # # Deterministically shuffle before splitting for the case of using both sexes
-        # torch.manual_seed(42)
-        # idx = torch.randperm(len(normal))
-        # normal = list(np.array(normal)[idx])
-
-        # idx = torch.randperm(len(anomal))
-        # anomal = list(np.array(anomal)[idx])
-        # segmentations = list(np.array(segmentations)[idx])
 
         # calculate split indices
         split_idx = int(len(normal) * config.anomal_split)

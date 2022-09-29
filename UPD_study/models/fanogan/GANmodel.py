@@ -1,5 +1,6 @@
 '''
 adapted from https://github.com/dbbbbm/f-AnoGAN-PyTorch
+by Felix Meissen https://github.com/FeliMe/
 '''
 from functools import partial
 from typing import Tuple

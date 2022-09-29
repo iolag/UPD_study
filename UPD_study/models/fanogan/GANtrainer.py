@@ -1,6 +1,6 @@
-import sys
-import os
-sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
+'''
+adapted from https://github.com/dbbbbm/f-AnoGAN-PyTorch
+'''
 from argparse import ArgumentParser
 import numpy as np
 import torch
@@ -10,12 +10,12 @@ from torch import Tensor
 from typing import Tuple
 from GANmodel import fAnoGAN, calc_gradient_penalty
 from torch.nn import functional as F
-from Utilities.evaluate import evaluate
-from Utilities.common_config import common_config
-from Utilities.utils import (set_requires_grad, load_pretrained,
-                             seed_everything, load_data, load_model,
-                             misc_settings, str_to_bool,
-                             ssim_map, log)
+from UPD_study.utilities.common_config import common_config
+from UPD_study.utilities.utils import (seed_everything, str_to_bool, ssim_map,
+                                       load_data, load_pretrained,
+                                       misc_settings, log, load_model)
+from torchinfo import summary
+from UPD_study.utilities.evaluate import evaluate
 from scipy.ndimage import gaussian_filter
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
@@ -60,8 +60,6 @@ if config.modality == 'MRI':
     config.max_steps_gan = 30000
 
 config.method = 'f-anoGAN'
-
-# general setup
 misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
@@ -102,21 +100,24 @@ if not config.train_gan and not config.eval:
     print('Saved WGAN loaded.')
 
 if config.load_pretrained and not config.eval:
-
     config.arch = 'fanogan'
     model.E = load_pretrained(model.E, config)
 
+# Space Benchmark
 if config.speed_benchmark:
-    from torchinfo import summary
     a = summary(model.E, (16, 1, 128, 128), verbose=0)
     b = summary(model.D, (16, 1, 128, 128), verbose=0)
     c = summary(model.G, input_data=[torch.randn(16, config.latent_dim).cuda(), 16], verbose=0)
-
     params = a.total_params + b.total_params + c.total_params
-    macs = a.total_mult_adds + b.total_mult_adds + c.total_mult_adds
     print('Number of Million parameters: ', params / 1e06)
-    print('Number of GMACs: ', macs / 1e09)
+    exit(0)
+
 """"""""""""""""""""""""""""""""" GAN Training """""""""""""""""""""""""""""""""
+
+
+def set_requires_grad(model, requires_grad: bool) -> None:
+    for param in model.parameters():
+        param.requires_grad = requires_grad
 
 
 def train_step_gan(x_real) -> Tuple[dict, Tensor]:
@@ -354,8 +355,8 @@ def train_encoder():
             if config.step % config.enc_val_frequency == 0:
                 _ = validate_encoder()
 
-            if config.step % config.anom_val_frequency == 0 or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
-                evaluate(config, small_testloader, val_step_encoder, val_loader)
+            if config.step % config.anom_val_frequency == 0:
+                evaluate(config, small_testloader, val_step_encoder)
 
             if config.step >= config.max_steps_encoder:
                 print(f'Reached {config.max_steps_encoder} iterations. Finished training encoder.')
@@ -366,7 +367,7 @@ def train_encoder():
         print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
 
 
-def val_step_encoder(input, return_loss: bool = True):
+def val_step_encoder(input, test_samples: bool = False):
     model.eval()
     with torch.no_grad():
 
@@ -404,12 +405,10 @@ def val_step_encoder(input, return_loss: bool = True):
             for i in range(anomaly_map.shape[0]):
                 anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=4)
             anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
-        if config.modality in ['MRI', 'CT']:
+
+        if config.modality == 'MRI':
             mask = torch.cat([inp > inp.min() for inp in input]).unsqueeze(1)
             anomaly_map *= mask
-        # elif config.modality in ['RF']:
-        #     mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min() for inp in input])
-        #     anomaly_map *= mask
 
         # Anomaly score
         if config.ssim_eval:
@@ -423,12 +422,12 @@ def val_step_encoder(input, return_loss: bool = True):
                 img_diff[i] = gaussian_filter(img_diff[i], sigma=4)
             img_diff = torch.from_numpy(img_diff).to(config.device)
 
-        if config.modality in ['MRI', 'CT']:
+        if config.modality == 'MRI':
             mask = torch.cat([inp > inp.min() for inp in input]).unsqueeze(1)
             img_diff *= mask
             img_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(img_diff, input)])
 
-        elif config.modality in ['RF'] and config.dataset == 'DDR':
+        elif config.modality == 'RF':
             img_score = torch.tensor([map.max() for map in anomaly_map])
         else:
             img_score = torch.tensor([map.mean() for map in anomaly_map])
@@ -436,10 +435,10 @@ def val_step_encoder(input, return_loss: bool = True):
         feat_diff = (x_feats - x_rec_feats).pow(2).mean((1))
         anomaly_score = img_score.to(config.device) + config.feat_weight * feat_diff
 
-    if return_loss:
-        return loss_dict, anomaly_map, anomaly_score, input_recon
-    else:
+    if test_samples:
         return anomaly_map, anomaly_score, input_recon
+    else:
+        return loss_dict, anomaly_map, anomaly_score, input_recon
 
 
 def validate_encoder() -> None:
@@ -484,7 +483,7 @@ def validate_encoder() -> None:
 if __name__ == '__main__':
     if config.eval:
         print('Evaluating model...')
-        evaluate(config, big_testloader, val_step_encoder, val_loader)
+        evaluate(config, big_testloader, val_step_encoder)
     else:
         if config.train_gan:
             train_gan()

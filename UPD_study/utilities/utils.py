@@ -155,61 +155,31 @@ def load_model(config: Namespace) -> Tuple[nn.Module, ...]:
         return load_enc, load_dec
 
     elif config.method == 'f-anoGAN':
-        if config.modality == 'CXR':
-            if config.eval:
-                load_g = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}__seed:10_netG.pth'.replace('_CCD', ''))
-                load_d = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}__seed:10_netD.pth'.replace('_CCD', ''))
-                load_e = torch.load(f'saved_models/{config.modality}/{config.name}_netE.pth')
-                return load_g, load_d, load_e
 
-            # the 2 distinct run scenario where wgan is already trained and we want to train encoder
-            else:
-                load_g = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}__seed:10_netG.pth'.replace('_CCD', ''))
-                load_d = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}__seed:10_netD.pth'.replace('_CCD', ''))
-                return load_g, load_d
-        elif config.modality == 'RF':
-            if config.eval:
-                load_g = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_DDR_seed:10_netG.pth'.replace('_CCD', ''))
-                load_d = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_DDR_seed:10_netD.pth'.replace('_CCD', ''))
-                load_e = torch.load(f'saved_models/{config.modality}/{config.name}_netE.pth')
-                return load_g, load_d, load_e
-
-            # the 2 distinct run scenario where wgan is already trained and we want to train encoder
-            else:
-                load_g = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_DDR_seed:10_netG.pth'.replace('_CCD', ''))
-                load_d = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_DDR_seed:10_netD.pth'.replace('_CCD', ''))
-                return load_g, load_d
+        if config.modality in ['CXR', 'RF']:
+            generator_name = f'f-anoGAN_{config.modality}__seed:10_netG.pth'
+            discriminator_name = f'f-anoGAN_{config.modality}__seed:10_netD.pth'
         elif config.modality == 'MRI':
+            generator_name = f'f-anoGAN_{config.modality}_{config.sequence}__seed:10_netG.pth'
+            discriminator_name = f'f-anoGAN_{config.modality}_{config.sequence}__seed:10_netD.pth'
 
-            if config.eval:
-                load_g = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_{config.sequence}__seed:10_netG.pth'.replace('_CCD', ''))
-                load_d = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_{config.sequence}__seed:10_netD.pth'.replace('_CCD', ''))
-                load_e = torch.load(f'saved_models/{config.modality}/{config.name}_netE.pth')
-                return load_g, load_d, load_e
-            # the 2 distinct run scenario where wgan is already trained and we want to train encoder
-            else:
-                load_g = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_{config.sequence}__seed:10_netG.pth'.replace('_CCD', ''))
-                load_d = torch.load(
-                    f'saved_models/{config.modality}/f-anoGAN_{config.modality}_{config.sequence}__seed:10_netD.pth'.replace('_CCD', ''))
-                return load_g, load_d
+        load_g = torch.load(os.path.join('saved_models',
+                                         config.modality,
+                                         generator_name))
+
+        load_d = torch.load(os.path.join('saved_models',
+                                         config.modality,
+                                         discriminator_name))
+        if config.eval:
+            load_e = torch.load(f'saved_models/{config.modality}/{config.name}_netE.pth')
+            return load_g, load_d, load_e
+
+        # for the 2 run scenario where wgan is already trained and we want to train encoder
+        else:
+            return load_g, load_d
+
     else:
         return torch.load(f'saved_models/{config.modality}/{config.name}_.pth')
-
-
-def set_requires_grad(model, requires_grad: bool) -> None:
-    for param in model.parameters():
-        param.requires_grad = requires_grad
 
 
 def misc_settings(config: Namespace) -> None:
@@ -252,9 +222,8 @@ def misc_settings(config: Namespace) -> None:
         name += '_CCD'
     if config.modality == 'RF':
         config.img_channels = 3
-    if config.modality == 'RF' and config.dataset == 'LAG' and config.method != 'f-anoGAN':
-        config.stadardize = True
-    elif config.modality == 'RF' and config.dataset == 'DDR' and config.method != 'f-anoGAN':
+
+    elif config.modality == 'RF' and config.method != 'f-anoGAN':
         if config.method != 'AMCons':
             config.center = True
 

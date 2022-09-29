@@ -208,7 +208,6 @@ def validate(val_loader, config) -> None:
 def train() -> None:
 
     print(f'Starting training {config.name}...')
-    i_epoch = 0
     train_losses = defaultdict(list)
     t_start = time()
 

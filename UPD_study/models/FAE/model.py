@@ -1,3 +1,6 @@
+"""
+Code from https://github.com/FeliMe/feature-autoencoder
+"""
 from typing import Dict, List
 import torch
 import torch.nn as nn

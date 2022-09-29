@@ -6,11 +6,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 import torchvision.models as models
-from Models.VAE.VAEmodel import VAE
-from Models.fanogan.GANmodel import Encoder
-from Models.DAE.unet import UNet
-from Models.PII.PIImodel import WideResNetAE
-from Models.AMCons.models import Encoder
+from UPD_study.models.VAE.VAEmodel import VAE
+from UPD_study.models.fanogan.GANmodel import Encoder
+from UPD_study.models.DAE.unet import UNet
+from UPD_study.models.PII.PIImodel import WideResNetAE
+from UPD_study.models.AMCons.models import Encoder as amc_encoder
 
 
 def backbone_architecture(config):
@@ -65,13 +65,13 @@ def backbone_architecture(config):
         return {'backbone': backbone, 'dim': 1024}
 
     elif 'amc' == config.backbone_arch:
-        model = Encoder(fin=3,
-                        zdim=config.zdim,
-                        dense=config.dense,
-                        n_blocks=config.n_blocks,
-                        spatial_dim=config.input_shape[1] // 2**config.n_blocks,
-                        variational=True,
-                        gap=False).to(config.device)
+        model = amc_encoder(fin=3,
+                            zdim=config.zdim,
+                            dense=config.dense,
+                            n_blocks=config.n_blocks,
+                            spatial_dim=config.input_shape[1] // 2**config.n_blocks,
+                            variational=True,
+                            gap=False).to(config.device)
 
         model.forward = model.forward_CCD
         backbone = model
