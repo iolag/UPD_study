@@ -25,10 +25,5 @@ Additionally, you need to install the repository as a package:
 python3 -m pip install --editable .
 ```
 
-To be able to use [Weights & Biases](https://wandb.ai) for logging:
-
-a) Sign up for a free account at https://wandb.ai/site and then login to your wandb account.
-b) Find your API key here: https://wandb.ai/authorize and login to the wandb library on your machine by running:
-```bash
-wandb login
+To be able to use [Weights & Biases](https://wandb.ai) for logging follow the instructions at https://docs.wandb.ai/quickstart.
 ```
