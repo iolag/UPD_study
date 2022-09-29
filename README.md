@@ -3,6 +3,8 @@ This repository contains the code to reproduce the experiments from the paper.
 
 Abstract: Deep unsupervised approaches are gathering increased attention in the field of medical pathology detection and segmentation since they promise to alleviate labeled data bottlenecks and be more generalizable than their supervised counterparts in detecting any kind of rare pathology. As Unsupervised Anomaly Detection (UAD) literature continuously grows and new paradigms emerge, it is vital to continuously evaluate and benchmark new methods in a common context, in order to reassess the state-of-the-art (SOTA) and identify promising research directions. To this end, we evaluate a diverse selection of cutting-edge UAD methods on multiple medical datasets, pitting them against the established SOTA in brain MR. Our experiments demonstrate that newly developed Feature-space methods from the industrial and medical literature demonstrate increased performance compared to previous work and set the new SOTA in a variety of modalities and datasets. Additionally, we show that such methods are in principle capable of benefiting from recently developed self-supervised pre-training algorithms, further increasing their performance. Finally, we perform a series of experiments in order to gain further insights into some unique characteristics of selected models and datasets.
 
+![A schematic illustration of Image-space (a) and Feature-space (b) methods. (Figure 1 from the paper)](figures/img-feat-vertical.png)
+
 # Usage
 
 Download this repository by running
@@ -33,23 +35,43 @@ To be able to use [Weights & Biases](https://wandb.ai) for logging follow the in
 
 ## Data
 
-# CheXpert 
+### CheXpert 
 
 To download CheXpert you must first register at https://stanfordmlgroup.github.io/competitions/chexpert/. After you receive the subscription confirmation e-mail, download the downsampled version (~11G) and extract it in data/datasets/CXR. No other steps are required and all splits are provided.
 
-# DDR 
+### DDR 
 
 To download and prepare the DDR dataset, run:
 
 ```bash
-bash data/data_preprocessing/ddr.sh
+bash data/datasets/RF/ddr.sh
 ```
 
-# MRI: CamCAN, ATLAS, BraTS 
+### MRI: CamCAN, ATLAS, BraTS 
 
 To download and prepare the MRI datasets, run:
 
 ```bash
 bash data/data_preprocessing/mri.sh
 ```
+## Run Experiments
 
+To generate the "Main Results" from Tables 1 and 3 run:
+```bash
+bash experiments/main.sh
+```
+
+To generate the "Self-Supervised Pre-training" results from Tables 2 and 4 run:
+```bash
+bash experiments/pretrained.sh
+```
+
+To generate the "Complexity Analysis" results from Table 5 run:
+```bash
+bash experiments/benchmarks.sh
+```
+
+To generate "The Effects of Limited Training Data" results from Fig. 3 run:
+```bash
+bash experiments/percentage.sh
+```

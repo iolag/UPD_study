@@ -46,6 +46,10 @@ def get_config():
 
 config = get_config()
 
+config.restoration = False
+config.method = 'VAE'
+misc_settings(config)
+
 # Specific modality params (Default are for MRI t2)
 if config.modality != 'MRI':
     config.max_steps = 10000
@@ -58,16 +62,11 @@ if config.modality == 'CXR':
     config.conv1x1 = 64
 
 if (config.modality == 'MRI' and config.sequence == 't1') or config.modality == 'RF':
-
     config.kl_weight = 0.0001
     config.num_layers = 6
     config.latent_dim = 512
     config.width = 32
     config.conv1x1 = 64
-
-config.restoration = False
-config.method = 'VAE'
-misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
 
@@ -98,7 +97,7 @@ if config.eval:
     print('Saved model loaded.')
 
 # Space Benchmark
-if config.speed_benchmark:
+if config.space_benchmark:
     a = summary(model, (16, 3, 128, 128), verbose=0)
     params = a.total_params
     print('Number of Million parameters: ', params / 1e06)

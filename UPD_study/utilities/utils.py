@@ -192,6 +192,12 @@ def misc_settings(config: Namespace) -> None:
     Args:
         config (Namespace): configuration object.
     """
+    msg = "Please use 0.0 < anomal_split < 1.0."
+    assert (config.anomal_split > 0.0), msg
+    assert (config.anomal_split < 1.0), msg
+    msg = "Please use 0.0 < normal_split < 1.0."
+    assert (config.normal_split > 0.0), msg
+    assert (config.normal_split < 1.0), msg
 
     config.datasets_dir = os.path.join(os.path.expanduser('~/thesis/UAD_study/'), config.datasets_dir)
 
@@ -202,7 +208,7 @@ def misc_settings(config: Namespace) -> None:
         config.modality = 'CXR'
         config.disable_wandb = True
         config.eval = True
-        config.seed = 10
+        config.seed = 20
 
     if not config.eval:
         config.no_dice = True
@@ -262,6 +268,7 @@ def misc_settings(config: Namespace) -> None:
     config.name = name
     config.logger = logger
     config.step = 0
+    print(config.name)
     return
 
 
@@ -415,7 +422,7 @@ class GenericDataloader(DataLoader):
             drop_last=False)
 
 
-def load_data(config):
+def load_data(config: Namespace) -> Tuple[DataLoader, ...]:
     """
     Returns dataloaders according to splits. If config.normal_split == 1, train and validation
     dataloaders are the same and include the whole dataset. Similar for small and big testloaders
@@ -446,58 +453,41 @@ def load_data(config):
     print("Loading data...")
     t_load_data_start = time()
 
-    # For testloaders make batch_size equal to num_images_log, the number of images to log on wandb.
-    # In evaluate.py there is the need to run through the dataloader once to calc threshold
-    # when running through it again to produce and log images, it is more convenient to do it through
-    # a single testloader iteration, instead of doing many testloader iterations until we aggregate the
-    # desired number of images we want to log.
-
+    # For testloaders make batch_size equal to num_images_log, in order to log
+    # desired number of images with a single forward pass in evaluate()
     temp = config.batch_size
-    if config.method != 'DFR' or config.get_images:
+
+    # DFR cannot handle large batch size due to memory requirements, hence keep original batch size
+    if config.method != 'DFR':
         config.batch_size = config.num_images_log
 
-    if config.anomal_split == 1.0:
-        testloader = get_dataloaders(config, train=False)
-        small_testloader = testloader
-        big_testloader = testloader
-        print(f'Test-set: {len(testloader.dataset)} samples.')
-        msg = "batch_size too high, Testloader is empty."
-        assert (len(testloader) != 0), msg
+    big_testloader, small_testloader = get_dataloaders(config, train=False)
 
-    else:
+    print('Big test-set: {} samples, Small test-set: set: {} samples.'.format(
+        len(big_testloader.dataset),
+        len(small_testloader.dataset),
+    ))
 
-        big_testloader, small_testloader = get_dataloaders(config, train=False)
+    msg = "anomal_split is too high or batch_size too high, Small testloader is empty."
+    assert (len(small_testloader) != 0), msg
 
-        print('Big test-set: {} samples, Small test-set: set: {} samples.'.format(
-            len(big_testloader.dataset),
-            len(small_testloader.dataset),
-        ))
-
-        msg = "anomal_split is too high or batch_size too high, Small testloader is empty."
-        assert (len(small_testloader) != 0), msg
-
-    if not config.eval or config.method in ['DFR', 'CFLOW-AD']:
+    # if this is not an evaluation run, or method is CFLOW-AD which requires normal samples during inference
+    # restore batch size and return train and validation dataloaders along with testloaders
+    if not config.eval or config.method == 'CFLOW-AD':
         # restore desired batch_size
         config.batch_size = temp
 
-        if config.normal_split == 1.0:
-            train_loader = get_dataloaders(config)
-            print('Training set: {} samples'.format(
-                len(train_loader.dataset)
-            ))
-            train_loader = train_loader
-            val_loader = train_loader
-        else:
-            train_loader, val_loader = get_dataloaders(config)
-            print('Training set: {} samples, Valid set: {} samples'.format(
-                len(train_loader.dataset),
-                len(val_loader.dataset),
-            ))
+        train_loader, val_loader = get_dataloaders(config)
+        print('Training set: {} samples, Valid set: {} samples'.format(
+            len(train_loader.dataset),
+            len(val_loader.dataset),
+        ))
 
         print(f'Loaded datasets in {time() - t_load_data_start:.2f}s')
 
         return train_loader, val_loader, big_testloader, small_testloader
 
+    # if evaluation run and not CFLOW-AD, do not return train and validation dataloaders
     else:
 
         print(f'Loaded datasets in {time() - t_load_data_start:.2f}s')

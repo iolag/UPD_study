@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset
 import numpy as np
 from torch.utils.data import DataLoader
-from UPD_study.data.data_preprocessing.mri_preprocessing import (
+from UPD_study.data.dataloaders.mri_preprocessing import (
     get_camcan_slices, get_brats_slices, get_atlas_slices)
 from UPD_study.utilities.utils import GenericDataloader
 from torch import Tensor

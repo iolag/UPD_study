@@ -1,9 +1,7 @@
 from typing import Dict, List, Tuple
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from torch import Tensor
 from torchvision import models as tv_models
 

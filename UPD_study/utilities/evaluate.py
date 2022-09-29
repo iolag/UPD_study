@@ -27,7 +27,7 @@ def evaluate(config: Namespace, test_loader: DataLoader, val_step: Callable) -> 
     total_elapsed_time = 0
 
     # forward pass the testloader to extract anomaly maps, scores, masks, labels
-    for input, mask in tqdm(test_loader, desc="Test set"):
+    for input, mask in tqdm(test_loader, desc="Test set", disable=config.speed_benchmark):
 
         if config.speed_benchmark:
             timer = perf_counter()
@@ -50,10 +50,10 @@ def evaluate(config: Namespace, test_loader: DataLoader, val_step: Callable) -> 
                 total_elapsed_time += run_time
 
             if benchmark_step == 13:
-                print(f"current forward pass time: {run_time} - Mean inference time: ",
+                print(f"last batch inference time: {run_time} - Mean batch inference time: ",
                       total_elapsed_time / (benchmark_step - 3),
                       "fps: ", 160 / total_elapsed_time)
-                exit(0)
+                return
 
     # calculate metrics like AP, AUROC, on pixel and/or image level
     metrics(config, anomaly_maps, segmentations, anomaly_scores, labels)
