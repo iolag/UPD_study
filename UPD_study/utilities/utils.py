@@ -198,7 +198,7 @@ def misc_settings(config: Namespace) -> None:
     # Select training device
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    if config.speed_benchmark:
+    if config.speed_benchmark or config.space_benchmark:
         config.modality = 'CXR'
         config.disable_wandb = True
         config.eval = True

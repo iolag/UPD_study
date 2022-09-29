@@ -34,7 +34,6 @@ def get_config():
     parser.add_argument('--lr', '-lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--max-epochs', type=int, default=200, help='Number of training epochs')
     parser.add_argument('--max-steps', '-ms', type=int, default=20000, help='Number of training steps')
-    parser.add_argument('--save-checkpoint', type=int, default=166666, help='Checkpoint save frequency')
 
     # VAE Hyperparameters
     parser.add_argument('--latent_dim', type=int, default=512, help='Model width')

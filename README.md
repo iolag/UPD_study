@@ -32,3 +32,24 @@ To be able to use [Weights & Biases](https://wandb.ai) for logging follow the in
 
 
 ## Data
+
+# CheXpert 
+
+To download CheXpert you must first register at https://stanfordmlgroup.github.io/competitions/chexpert/. After you receive the subscription confirmation e-mail, download the downsampled version (~11G) and extract it in data/datasets/CXR. No other steps are required and all splits are provided.
+
+# DDR 
+
+To download and prepare the DDR dataset, run:
+
+```bash
+bash data/data_preprocessing/ddr.sh
+```
+
+# MRI: CamCAN, ATLAS, BraTS 
+
+To download and prepare the MRI datasets, run:
+
+```bash
+bash data/data_preprocessing/mri.sh
+```
+
