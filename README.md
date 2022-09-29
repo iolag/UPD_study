@@ -5,7 +5,7 @@
 Download this repository by running
 
 ```bash
-git clone https://github.com/FeliMe/feature-autoencoder
+git clone https://github.com/iolag/UAD_study/
 ```
 
 in your terminal.
@@ -16,7 +16,7 @@ Create and activate the Anaconda environment:
 
 ```bash
 conda env create -f environment.yml
-conda activate anomaly_detection
+conda activate upd
 ```
 
 Additionally, you need to install the repository as a package:
