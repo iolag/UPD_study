@@ -78,7 +78,7 @@ bash experiments/pretrained.sh
 Alternatively, for a single seed run:
 
 ```bash
-bash experiments/pretrained_seed10.sh 
+bash experiments/pretrained_seed10.sh      
 ```
 
 To generate the "Complexity Analysis" results from Table 5 run:
@@ -92,4 +92,4 @@ bash experiments/percentage.sh
 ```
 
 
-![A schematic illustration of Image-space (a) and Feature-space (b) methods. (Figure 1 from the paper)](figures/repo_samples.png)
+![A )](figures/repo_samples.png)
