@@ -1,3 +1,6 @@
+"""
+adapted from: https://github.com/AntixK/PyTorch-VAE/blob/master/models/vanilla_vae.py
+"""
 from argparse import ArgumentParser
 import numpy as np
 import torch
@@ -6,6 +9,7 @@ from VAEmodel import VAE
 from time import time
 from torch import Tensor
 from typing import Tuple
+import pathlib
 from torchinfo import summary
 from scipy.ndimage import gaussian_filter
 from UPD_study.utilities.evaluate import evaluate
@@ -29,15 +33,16 @@ def get_config():
     parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
 
     # Model Hyperparameters
-    parser.add_argument('--kl_weight', type=float, default=0.001, help='kl weight')
-    parser.add_argument('--latent_dim', type=int, default=512, help='Model width')
-    parser.add_argument('--num_layers', type=int, default=6, help='Model width')
-    parser.add_argument('--width', type=int, default=16, help='First conv layer num of filters')
+    parser.add_argument('--kl_weight', type=float, default=0.001, help='kl loss term weight')
+    parser.add_argument('--latent_dim', type=int, default=512, help='Latent dimension.')
+    parser.add_argument('--num_layers', type=int, default=6,
+                        help='Numer of encoder (and decoder) conv layers')
+    parser.add_argument('--width', type=int, default=16, help='First conv layer number of filters.')
     parser.add_argument('--conv1x1', type=int, default=16,
-                        help='Channel downsampling with 1x1 convs before bottleneck')
-    parser.add_argument('--kernel_size', type=int, default=3, help='convolutional kernel size')
+                        help='Channel downsampling with 1x1 convs before bottleneck.')
+    parser.add_argument('--kernel_size', type=int, default=3, help='Convolutional kernel size.')
     parser.add_argument('--padding', type=int, default=1,
-                        help='padding for consistent downsampling, set 2 if kernel_size == 5')
+                        help='Padding for consistent downsampling, set to 2 if kernel_size == 5.')
     parser.add_argument('--dropout', type=float, default=0.0,
                         help='Input Dropout like https://doi.org/10.1145/1390156.1390294')
 
@@ -49,6 +54,7 @@ config = get_config()
 # set initial script settings
 config.restoration = False
 config.method = 'VAE'
+config.save_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
 # Specific modality params (Default are for MRI t2)
@@ -84,6 +90,7 @@ seed_everything(config.seed)
 print("Initializing model...")
 model = VAE(config).to(config.device)
 
+# load CCD pretrained encoder and bottleneck
 if config.load_pretrained and not config.eval:
     config.arch = 'vae'
     model = load_pretrained(model, config)
@@ -108,6 +115,9 @@ if config.space_benchmark:
 
 
 def vae_train_step(input) -> dict:
+    """
+    Training step
+    """
     model.train()
     optimizer.zero_grad()
     input_recon, mu, logvar = model(input)
@@ -119,7 +129,9 @@ def vae_train_step(input) -> dict:
 
 
 def vae_val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
-
+    """
+    Validation step on validation or evaluation (test samples == True) set.
+    """
     model.eval()
 
     with torch.no_grad():
@@ -164,7 +176,9 @@ def vae_val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
 
 
 def validate(val_loader, config) -> None:
-
+    """
+    Validation logic on normal validation set.
+    """
     val_losses = defaultdict(list)
     i_val_step = 0
 
@@ -206,7 +220,9 @@ def validate(val_loader, config) -> None:
 
 
 def train() -> None:
-
+    """
+    Main training logic
+    """
     print(f'Starting training {config.name}...')
     train_losses = defaultdict(list)
     t_start = time()

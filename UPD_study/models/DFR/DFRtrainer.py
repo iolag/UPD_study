@@ -13,6 +13,7 @@ import torch.nn as nn
 from scipy.ndimage import gaussian_filter
 from DFRmodel import Extractor, FeatureAE, _set_requires_grad_false
 from UPD_study.utilities.common_config import common_config
+import pathlib
 from UPD_study.utilities.evaluate import evaluate
 from UPD_study.utilities.utils import (save_model, seed_everything,
                                        load_data, load_pretrained,
@@ -49,6 +50,7 @@ def get_config():
 # set initial script settings
 config = get_config()
 config.method = 'DFR'
+config.save_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
@@ -130,6 +132,9 @@ if config.space_benchmark:
 
 
 def train_step(input) -> Tuple[float, Tensor]:
+    """
+    Training step
+    """
     model.train()
     optimizer.zero_grad()
     feats, rec = model(input)
@@ -140,7 +145,11 @@ def train_step(input) -> Tuple[float, Tensor]:
 
 
 def val_step(input, test_samples: bool = False) -> Tuple[float, Tensor, Tensor]:
-    """Calculates val loss, anomaly maps of shape batch_shape and anomaly scores of shape [b,1]"""
+    """
+    Validation step on validation or evaluation (test samples == True) validation set.
+
+    Calculates val loss, anomaly maps of shape batch_shape and anomaly scores of shape [b,1]
+    """
     model.eval()
 
     with torch.no_grad():
@@ -184,7 +193,9 @@ def val_step(input, test_samples: bool = False) -> Tuple[float, Tensor, Tensor]:
 
 
 def validate(val_loader, config):
-
+    """
+    Validation logic on normal validation set.
+    """
     val_losses = []
     i_val_step = 0
 
@@ -219,7 +230,9 @@ def validate(val_loader, config):
 
 
 def train() -> None:
-
+    """
+    Main training logic
+    """
     print(f'Starting training {config.name}...')
     train_losses = []
     t_start = time()

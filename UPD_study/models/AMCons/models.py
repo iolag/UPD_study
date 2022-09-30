@@ -36,7 +36,8 @@ class Resnet(torch.nn.Module):
         self.n_blocks = n_blocks
         self.nfeats = 512 // (2**(4 - n_blocks))
 
-        self.input = torch.nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=(7, 7), stride=(2, 2),
+        self.input = torch.nn.Conv2d(in_channels=in_channels, out_channels=64,
+                                     kernel_size=(7, 7), stride=(2, 2),
                                      padding=(3, 3), bias=False)
         resnet18_model = torchvision.models.resnet18(pretrained=False)
         self.resnet = torch.nn.Sequential(
@@ -164,7 +165,8 @@ class Decoder(torch.nn.Module):
 
         self.blocks = torch.nn.ModuleList()
         for i in np.arange(0, self.n_blocks):
-            self.blocks.append(torch.nn.Sequential(BasicBlock(n_filters_in[i], n_filters_out[i], downsample=True),
+            self.blocks.append(torch.nn.Sequential(BasicBlock(n_filters_in[i], n_filters_out[i],
+                                                              downsample=True),
                                                    BasicBlock(n_filters_out[i], n_filters_out[i])))
         self.out = torch.nn.Conv2d(n_filters_in[-1], n_filters_out[-1], kernel_size=(3, 3), padding=(1, 1))
 

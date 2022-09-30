@@ -94,6 +94,7 @@ if config.backbone_arch in ['unet']:
 if config.backbone_arch in ['resnet18']:
     config.center = True
 
+# set initial script settings
 config.method = 'CCD'
 misc_settings(config)
 
@@ -135,6 +136,9 @@ celoss = nn.CrossEntropyLoss()
 
 
 def adjust_lr(lr, optimizer, epoch, max_epochs):
+    """
+    Learning rate schedule.
+    """
     eta_min = lr * (0.1 ** 3)
     lr = eta_min + (lr - eta_min) * (1 + np.cos(np.pi * epoch / max_epochs)) / 2
     for param_group in optimizer.param_groups:
@@ -143,7 +147,9 @@ def adjust_lr(lr, optimizer, epoch, max_epochs):
 
 
 def train():
-    # Training
+    """
+    Main training logic
+    """
     start_epoch = 0
     lr = config.lr
     train_losses = defaultdict(list)

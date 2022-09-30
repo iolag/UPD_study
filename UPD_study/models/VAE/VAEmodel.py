@@ -1,3 +1,7 @@
+"""
+adapted from: https://github.com/AntixK/PyTorch-VAE/blob/master/models/vanilla_vae.py
+"""
+
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -86,10 +90,6 @@ def build_decoder(config) -> nn.Module:
 
 
 class VAE(nn.Module):
-    """
-    A n-layer variational autoencoder
-    adapted from: https://github.com/AntixK/PyTorch-VAE/blob/master/models/vanilla_vae.py
-    """
 
     def __init__(self, config: Namespace):
         """
@@ -160,7 +160,7 @@ class VAE(nn.Module):
         }
 
     def forward(self, x: Tensor) -> Tensor:
-        # https://doi.org/10.1145/1390156.1390294 Denoising Autoencoders
+        # https://doi.org/10.1145/1390156.1390294
         x = self.dropout(x)
 
         # Grayscale case, required because CCD needs RGB input

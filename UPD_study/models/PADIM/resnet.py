@@ -1,4 +1,6 @@
-
+"""Code from: https://github.com/xiahaifeng1995/PaDiM-Anomaly-Detection-Localization-master
+which is licensed under the Apache License 2.0.
+"""
 from torch import Tensor
 import torch.nn as nn
 try:
@@ -231,7 +233,7 @@ class ResNet(nn.Module):
         feature_a = self.layer1(x)
         feature_b = self.layer2(feature_a)
         feature_c = self.layer3(feature_b)
-        feature_d = self.layer4(feature_c)
+        # feature_d = self.layer4(feature_c)
 
         return [feature_a, feature_b, feature_c]
 

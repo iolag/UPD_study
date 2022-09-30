@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from torch import Tensor
 from argparse import Namespace
 from UPD_study.utilities.utils import GenericDataloader
-from UPD_study.models.PII.fpi_utils import pii
+from UPD_study.models.PII.pii_utils import pii
 from multiprocessing import Pool, cpu_count
 from functools import partial
 

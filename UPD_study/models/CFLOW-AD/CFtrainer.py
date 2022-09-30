@@ -37,6 +37,8 @@ import numpy as np
 from time import time
 import torch.nn.functional as F
 from scipy.ndimage import gaussian_filter
+import pathlib
+import os
 from model import load_decoder, load_encoder, positionalencoding2d, activation
 from torchinfo import summary
 from UPD_study.utilities.common_config import common_config
@@ -78,6 +80,7 @@ config.clamp_alpha = 1.9  # see paper equation 2 for explanation
 config.condition_vec = 128
 
 # set initial script settings
+config.save_path = pathlib.Path(__file__).parents[0]
 config.method = 'CFLOW-AD'
 misc_settings(config)
 
@@ -121,7 +124,8 @@ for i in range(1, config.num_pool_layers):
 optimizer = torch.optim.Adam(params, lr=config.lr)
 
 if config.eval:
-    [decoder.load_state_dict(torch.load(f'saved_models/{config.modality}/{config.name}_decoder_{i}.pth'))
+    save_path = os.path.join(config.save_path, 'saved_models')
+    [decoder.load_state_dict(torch.load(f'{save_path}/{config.modality}/{config.name}_decoder_{i}.pth'))
      for i, decoder in enumerate(decoders)]
 
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
@@ -167,6 +171,9 @@ def train():
 
 
 def train_step(batch):
+    """
+    Training step
+    """
     batch = batch.to(config.device)
 
     # if grayscale repeat channel dim
@@ -230,7 +237,9 @@ def train_step(batch):
 
 @torch.no_grad()
 def val_step(input, test_samples: bool = False):
-    """Forward-pass images into the network to extract encoder features and compute probability.
+    """
+    Evaluation step.
+    Forward-pass images into the network to extract encoder features and compute probability.
         Args:
           input: Batch of images.
         Returns:

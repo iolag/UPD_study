@@ -1,5 +1,6 @@
-#  Copyright (C) 2022 Canon Medical Systems Corporation. All rights reserved
-# GNU General Public License v2.0
+"""Adapted from https://github.com/AntanasKascenas/DenoisingAE/
+which is licensed under the GNU General Public License v2.0"""
+
 from argparse import ArgumentParser
 import numpy as np
 import torch
@@ -12,6 +13,7 @@ from typing import Tuple
 from unet import UNet
 from scipy.ndimage import gaussian_filter
 from torchinfo import summary
+import pathlib
 from UPD_study.utilities.common_config import common_config
 from UPD_study.utilities.utils import (save_model, seed_everything,
                                        load_data, load_pretrained,
@@ -43,6 +45,7 @@ def get_config():
 # set initial script settings
 config = get_config()
 config.method = 'DAE'
+config.save_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
@@ -116,6 +119,9 @@ def add_noise(input):
 
 
 def train_step(input, noisy_input) -> Tuple[float, Tensor, Tensor]:
+    """
+    Training step
+    """
     model.train()
     optimizer.zero_grad()
     reconstruction = model(noisy_input)
@@ -127,7 +133,9 @@ def train_step(input, noisy_input) -> Tuple[float, Tensor, Tensor]:
 
 
 def anom_val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
-
+    """
+    Evaluation step.
+    """
     model.eval()
     with torch.no_grad():
         # forward pass
@@ -164,6 +172,9 @@ def anom_val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
 
 
 def train():
+    """
+    Main training logic
+    """
     print(f'Starting training {config.name}...')
 
     train_losses = []

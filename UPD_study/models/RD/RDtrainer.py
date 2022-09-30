@@ -1,6 +1,6 @@
-import sys
-import os
-sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
+"""
+Adapted from https://github.com/hq-deng/RD4AD
+"""
 import torch
 import numpy as np
 from torch.nn import functional as F
@@ -9,12 +9,16 @@ from time import time
 from typing import Tuple
 from torch import Tensor
 from scipy.ndimage import gaussian_filter
-from Utilities.common_config import common_config
-from Utilities.evaluate import evaluate, evaluate_hist
-from Utilities.utils import (save_model, seed_everything,
-                             load_data, load_pretrained,
-                             misc_settings,
-                             load_model, log)
+from torchinfo import summary
+import pathlib
+from resnet import resnet18, wide_resnet50_2
+from de_resnet import de_resnet18, de_wide_resnet50_2
+from UPD_study.utilities.evaluate import evaluate
+from UPD_study.utilities.common_config import common_config
+from UPD_study.utilities.utils import (save_model, seed_everything,
+                                       load_data, load_pretrained,
+                                       misc_settings,
+                                       load_model, log)
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
@@ -26,7 +30,6 @@ def get_config():
     # Training Hyperparameters
     parser.add_argument('--lr', type=float, default=0.005, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='Weight decay')
-    # epochs = 200
     parser.add_argument('--max_steps', '-ms', type=int, default=10000, help='Number of training steps')
     parser.add_argument('--batch_size', '-bs', type=int, default=4, help='Batch size')
 
@@ -39,17 +42,17 @@ def get_config():
 
 config = get_config()
 
+# set initial script settings
 config.method = 'RD'
-
-# general setup
+config.save_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
-# specific seed for same dataloader creation accross different seeds
+
+# specific seed for creating the dataloader
 seed_everything(42)
 
 train_loader, val_loader, big_testloader, small_testloader = load_data(config)
-
 
 """"""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
 
@@ -59,21 +62,9 @@ seed_everything(config.seed)
 # Init model
 print("Initializing model...")
 if config.arch == 'resnet18':
-    if not config.deep:
-        from resnet import resnet18  # ,resnet18, resnet50,
-        from de_resnet import de_resnet18  # , de_resnet50,de_resnet18
-    else:
-        from deep.resnet import resnet18  # ,resnet18, resnet50,
-        from deep.de_resnet import de_resnet18  # , de_resnet50,de_resnet18
     encoder, bn = resnet18(pretrained=True)
     decoder = de_resnet18(pretrained=False)
 else:
-    if not config.deep:
-        from resnet import wide_resnet50_2  # ,resnet18, resnet50,
-        from de_resnet import de_wide_resnet50_2  # , de_resnet50,de_resnet18
-    else:
-        from deep.resnet import wide_resnet50_2  # ,resnet18, resnet50,
-        from deep.de_resnet import de_wide_resnet50_2  # , de_resnet50,de_resnet18
     encoder, bn = wide_resnet50_2(pretrained=True)
     decoder = de_wide_resnet50_2(pretrained=False)
 
@@ -82,12 +73,13 @@ encoder = encoder.to(config.device)
 bn = bn.to(config.device)
 encoder.eval()
 decoder = decoder.to(config.device)
-# load pretrained with CCD
+
+# load CCD pretrainerd encoder
 if config.load_pretrained:
     encoder = load_pretrained(encoder, config)
     encoder.eval()
 
-# use this dict for saving
+# dict that will be used for saving the model
 model = {'encoder': encoder, 'decoder': decoder, 'bn': bn}
 
 # Init optimizer
@@ -102,17 +94,15 @@ if config.eval:
     bn.load_state_dict(load_bn)
     print('Saved model loaded.')
 
-if config.speed_benchmark:
-    from torchinfo import summary
+# Space Benchmark
+if config.space_benchmark:
     input = next(iter(big_testloader))[0].cuda()
-
     a = summary(encoder, (16, 3, 128, 128), verbose=0)
     b = summary(bn, input_data=[encoder(input)], verbose=0)
     c = summary(decoder, bn(encoder(input)).shape, verbose=0)
     params = a.total_params + b.total_params + c.total_params
-    macs = a.total_mult_adds + b.total_mult_adds + c.total_mult_adds
     print('Number of Million parameters: ', params / 1e06)
-    print('Number of GMACs: ', macs / 1e09)
+    exit(0)
 
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
 
@@ -120,7 +110,9 @@ cos_loss = torch.nn.CosineSimilarity()
 
 
 def loss_fucntion(a, b):
-
+    """
+    Loss based on Cosine similarity between different encoder-decoder levels
+    """
     loss = 0
     for item in range(len(a)):
         loss += torch.mean(1 - cos_loss(a[item].view(a[item].shape[0], -1),
@@ -129,6 +121,9 @@ def loss_fucntion(a, b):
 
 
 def train_step(input) -> float:
+    """
+    Training step
+    """
     bn.train()
     decoder.train()
     optimizer.zero_grad()
@@ -144,7 +139,9 @@ def train_step(input) -> float:
 
 
 def get_anomaly_map(enc_output, dec_output, config) -> Tensor:
-
+    """
+    Generate anomaly map using cosine similarity between different encoder-decoder levels
+    """
     anomaly_map = torch.zeros(enc_output[0].shape[0], 1, config.image_size,
                               config.image_size).to(config.device)
 
@@ -167,8 +164,11 @@ def get_anomaly_map(enc_output, dec_output, config) -> Tensor:
 
 
 @ torch.no_grad()
-def val_step(input, return_loss: bool = True) -> Tuple[float, Tensor, Tensor]:
-    """Calculates val loss, anomaly maps of shape batch_shape and anomaly scores of shape [b,1]"""
+def val_step(input, test_samples: bool = False) -> Tuple[float, Tensor, Tensor]:
+    """
+    Validation step on validation or evaluation (test samples == True) validation set.
+    Calculates val loss, anomaly maps of shape batch_shape and anomaly scores of shape [b,1]
+    """
     encoder.eval()
     decoder.eval()
     bn.eval()
@@ -178,36 +178,27 @@ def val_step(input, return_loss: bool = True) -> Tuple[float, Tensor, Tensor]:
     anomaly_map = get_anomaly_map(enc_output, dec_output, config)
 
     # activations = [enc_output[0][-2, 0:10], enc_output[1][-2, 0:10], enc_output[2][-2, 0:10]]
-    if config.modality in ['MRI', 'MRInoram', 'CT']:
+    if config.modality == 'MRI':
         mask = torch.stack([inp[0].unsqueeze(0) > inp[0].min() for inp in input])
-        if config.get_images:
-            anomaly_map *= mask
-            mins = [(map[map > 0]) for map in anomaly_map]
-            mins = [map.min() for map in mins]
-
-            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         anomaly_map *= mask
         anomaly_score = torch.tensor([map[inp[0].unsqueeze(0) > inp[0].min()].max()
                                       for map, inp in zip(anomaly_map, input)])
 
-    # elif config.modality in ['RF'] and config.dataset == 'DDR':
-    #     mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()for inp in input])
-
-    #     anomaly_map *= mask
-    #     anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
-    #                                   for map, inp in zip(anomaly_map, input)])
-    elif config.modality in ['RF'] and config.dataset == 'DDR':
+    elif config.modality == 'RF':
         anomaly_score = torch.tensor([map.max() for map in anomaly_map])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
-    if return_loss:
-        return loss.item(), anomaly_map, anomaly_score
+
+    if test_samples:
+        return anomaly_map, anomaly_score
     else:
-        return anomaly_map, anomaly_score  # , activations
+        return loss.item(), anomaly_map, anomaly_score
 
 
 def validate(val_loader, config):
-
+    """
+    Validation logic on normal validation set.
+    """
     val_losses = []
     i_val_step = 0
 
@@ -235,9 +226,10 @@ def validate(val_loader, config):
 
 
 def train() -> None:
-
-    print('Starting training...')
-    i_epoch = 0
+    """
+    Main training logic
+    """
+    print(f'Starting training {config.name}...')
     train_losses = []
     t_start = time()
 
@@ -266,34 +258,20 @@ def train() -> None:
             if config.step % config.val_frequency == 0:
                 validate(val_loader, config)
 
-            if config.early_validation:
-                if config.step % config.anom_val_frequency == 0 or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
-                    evaluate(config, small_testloader, val_step, val_loader)
-            else:
-                #
-                # or config.step == 1 or config.step == 10 or config.step == 100 or config.step == 500 or config.step == 50:
-                if config.step % config.anom_val_frequency == 0:
-
-                    evaluate(config, small_testloader, val_step, val_loader)
-
-            if config.step % config.save_frequency == 0:
-                save_model(model, config, config.step)
+            if config.step % config.anom_val_frequency == 0:
+                evaluate(config, small_testloader, val_step)
 
             if config.step >= config.max_steps:
                 save_model(model, config)
                 print(f'Reached {config.max_steps} iterations. Finished training {config.name}.')
                 return
 
-        i_epoch += 1
-       # print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
-
 
 if __name__ == '__main__':
 
     if config.eval:
         print('Evaluating model...')
-        evaluate(config, big_testloader, val_step, val_loader)
-        # evaluate_hist(config, big_testloader, val_step, val_loader)
+        evaluate(config, big_testloader, val_step)
 
     else:
         train()

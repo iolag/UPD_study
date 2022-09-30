@@ -35,12 +35,13 @@ python3 -m pip install --editable .
 
 To be able to use [Weights & Biases](https://wandb.ai) for logging follow the instructions at https://docs.wandb.ai/quickstart.
 
+A quick guide on the folder and code structure can be found [here](structure.md).
 
 ## Data
 
 ### CheXpert 
 
-To download CheXpert you must first register at https://stanfordmlgroup.github.io/competitions/chexpert/. After you receive the subscription confirmation e-mail, download the downsampled version (~11G) and extract it in data/datasets/CXR. No other steps are required and all splits are provided.
+To download CheXpert you must first register at https://stanfordmlgroup.github.io/competitions/chexpert/. After you receive the subscription confirmation e-mail, download the downsampled version (~11G) and extract the CheXpert-v1.0-small folder in data/datasets/CXR. No other steps are required and all splits are provided.
 
 ### DDR 
 
@@ -57,16 +58,27 @@ To download and prepare the MRI datasets, run:
 ```bash
 bash data/data_preprocessing/mri.sh
 ```
-## Run Experiments
+## Experiments
 
-To generate the "Main Results" from Tables 1 and 3 run:
+To generate the "Main Results" from Tables 1 and 3 over all three seeds run:
 ```bash
-bash experiments/main.sh
+bash experiments/main.sh 
+```
+Alternatively, for a single seed run:
+
+```bash
+bash experiments/main_seed10.sh 
 ```
 
-To generate the "Self-Supervised Pre-training" results from Tables 2 and 4 run:
+
+To generate the "Self-Supervised Pre-training" results from Tables 2 and 4 over all three seeds run:
 ```bash
 bash experiments/pretrained.sh
+```
+Alternatively, for a single seed run:
+
+```bash
+bash experiments/pretrained_seed10.sh 
 ```
 
 To generate the "Complexity Analysis" results from Table 5 run:
@@ -78,5 +90,6 @@ To generate "The Effects of Limited Training Data" results from Fig. 3 run:
 ```bash
 bash experiments/percentage.sh
 ```
+
 
 ![A schematic illustration of Image-space (a) and Feature-space (b) methods. (Figure 1 from the paper)](figures/repo_samples.png)

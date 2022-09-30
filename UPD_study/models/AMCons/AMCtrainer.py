@@ -1,7 +1,6 @@
 """
 adapted from https://github.com/jusiro/constrained_anomaly_segmentation
 """
-
 from argparse import ArgumentParser
 from collections import defaultdict
 from time import time
@@ -10,6 +9,7 @@ from models import Encoder, Decoder
 import torch
 from torch import Tensor
 from torchinfo import summary
+import pathlib
 from UPD_study.utilities.evaluate import evaluate
 from UPD_study.utilities.common_config import common_config
 from UPD_study.utilities.utils import (save_model, seed_everything,
@@ -47,9 +47,11 @@ def get_config():
     return parser.parse_args()
 
 
-# set initial script settings
 config = get_config()
+
+# set initial script settings
 config.method = 'AMCons'
+config.save_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
 
@@ -85,10 +87,10 @@ dec = Decoder(fin=config.zdim,
 # Init optimizer
 optimizer = torch.optim.Adam(list(enc.parameters()) + list(dec.parameters()), lr=config.lr)
 
-# use this dict for saving
+# dict for saving the model
 model = {'encoder': enc, 'decoder': dec}
 
-# Load pre-trained backbone
+# Load CCD pre-trained backbone
 if config.load_pretrained and not config.eval:
     config.arch = 'amc'
     enc = load_pretrained(enc, config)
@@ -101,7 +103,8 @@ if config.eval:
     dec.load_state_dict(load_dec)
     print('Saved model loaded.')
 
-if config.speed_benchmark:
+# Space Benchmark
+if config.space_benchmark:
     input = next(iter(big_testloader))[0].cuda()
     a = summary(enc, (16, 3, 128, 128), verbose=0)
     b = summary(dec, enc(input)[0].shape, verbose=0)
@@ -113,17 +116,22 @@ if config.speed_benchmark:
 
 
 def loss_kl(mu, logvar):
-
+    """
+    KL divergence loss
+    """
     kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
     return kl_divergence
 
 
+# Reconstruction Loss
 loss_r = torch.nn.BCEWithLogitsLoss(reduction='sum')
 
 
 def train_step(input) -> dict:
-
+    """
+    Training step
+    """
     enc.train()
     dec.train()
     optimizer.zero_grad()
@@ -156,6 +164,9 @@ def train_step(input) -> dict:
 
 
 def val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
+    """
+    Validation step on  evaluation set.
+    """
     enc.eval()
     dec.eval()
 
@@ -171,20 +182,12 @@ def val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
                                 align_corners=True).detach()
 
     # for MRI apply brainmask
-    if config.modality in ['MRI', 'CT']:
+    if config.modality == 'MRI':
         mask = torch.stack([inp > inp.min() for inp in input])
-
-        if config.get_images:
-            anomaly_map *= mask
-            mins = [(map[map > map.min()]) for map in anomaly_map]
-            mins = [map.min() for map in mins]
-
-            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
-
         anomaly_map *= mask
         anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
 
-    elif config.modality in ['RF'] and config.dataset == 'DDR':
+    elif config.modality == 'DDR':
         anomaly_score = torch.tensor([map.max() for map in anomaly_map])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
@@ -193,8 +196,10 @@ def val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
 
 
 def train():
+    """
+    Main training logic
+    """
     print(f'Starting training {config.name}...')
-
     train_losses = defaultdict(list)
     t_start = time()
 
@@ -225,9 +230,6 @@ def train():
 
                 # Reset
                 train_losses = defaultdict(list)
-
-            # if config.step % config.val_frequency == 0:
-            #     validate(val_loader, config)
 
             if config.step % config.anom_val_frequency == 0:
                 evaluate(config, small_testloader, val_step, val_loader)

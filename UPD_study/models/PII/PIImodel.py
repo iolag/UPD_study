@@ -1,3 +1,10 @@
+"""
+Adapted by Felix Meissen https://github.com/FeliMe
+from: https://github.com/jemtan/FPI/blob/master/self_sup_task.py
+and: https://github.com/jemtan/PII/blob/main/poissonBlend.py
+"""
+
+
 import torch
 import torch.nn as nn
 from torch import Tensor

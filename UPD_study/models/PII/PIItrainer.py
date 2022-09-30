@@ -1,19 +1,16 @@
-import sys
-import os
-sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
 from argparse import ArgumentParser
 import numpy as np
 import torch
-# from Utilities.metrics import compute_average_precision
-from Models.PII.PIImodel import WideResNetAE
+from UPD_study.models.PII.PIImodel import WideResNetAE
 import torch.nn.functional as F
 from time import time
-from Utilities.common_config import common_config
-from Utilities.utils import (save_model, seed_everything,
-                             load_data, load_pretrained,
-                             misc_settings,
-                             load_model, log)
-from Utilities.evaluate import evaluate
+import pathlib
+from UPD_study.utilities.evaluate import evaluate
+from UPD_study.utilities.common_config import common_config
+from UPD_study.utilities.utils import (save_model, seed_everything,
+                                       load_data, load_pretrained,
+                                       misc_settings,
+                                       load_model, log)
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
@@ -36,15 +33,19 @@ def get_config():
 
 
 config = get_config()
+
+# set initial script settings
 config.method = 'PII'
+config.save_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
 
-# specific seed for deterministic dataloader creation
+# specific seed for creating the dataloader
 seed_everything(42)
 
 train_loader, val_loader, big_testloader, small_testloader = load_data(config)
+
 
 """"""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
 # Reproducibility
@@ -53,12 +54,12 @@ seed_everything(config.seed)
 print("Initializing model...")
 model = WideResNetAE(config).to(config.device)
 
-# Load pretrained encoder
+# load CCD pretrainerd encoder
 if config.load_pretrained and not config.eval:
     config.arch = 'pii'
     model = load_pretrained(model, config)
 
-# Init optimizer, learning rate scheduler
+# Init optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
 
 # Load saved model to evaluate
@@ -66,17 +67,21 @@ if config.eval:
     model.load_state_dict(load_model(config))
     print('Saved model loaded.')
 
-if config.speed_benchmark:
+# Space Benchmark
+if config.space_benchmark:
     from torchinfo import summary
     a = summary(model, (16, 3, 128, 128), verbose=0)
     params = a.total_params
-    macs = a.total_mult_adds
     print('Number of Million parameters: ', params / 1e06)
-    print('Number of GMACs: ', macs / 1e09)
+    exit(0)
+
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
 
 
 def train_step(x, y):
+    """
+    Training step
+    """
     model.train()
     optimizer.zero_grad()
     anomaly_map = model(x)
@@ -87,6 +92,9 @@ def train_step(x, y):
 
 
 def val_step(x, y):
+    """
+    Validation step
+    """
     model.eval()
     with torch.no_grad():
         anomaly_map = model(x)
@@ -95,6 +103,9 @@ def val_step(x, y):
 
 
 def validate() -> None:
+    """
+    Validation logic on normal validation set.
+    """
     val_losses = []
     i_val_step = 0
 
@@ -130,31 +141,20 @@ def validate() -> None:
     return np.mean(val_losses)
 
 
-def anom_val_step(input, return_loss: bool = True):
+def anom_val_step(input, test_samples: bool = False):
+    """
+    Validation step for evaluation set.
+    """
     model.eval()
     with torch.no_grad():
         anomaly_map = model(input).mean(1, keepdim=True)
 
-    if config.modality in ['MRI', 'CT']:
+    if config.modality == 'MRI':
         mask = torch.stack([inp > inp.min() for inp in input])
-
-        if config.get_images:
-            anomaly_map *= mask
-            mins = [(map[map > map.min()]) for map in anomaly_map]
-            mins = [map.min() for map in mins]
-
-            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
-
         anomaly_map *= mask
         anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
-    # elif config.modality in ['RF'] and config.dataset == 'DDR':
-    #     mask = torch.stack([inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()for inp in input])
 
-    #     anomaly_map *= mask
-    #     anomaly_score = torch.tensor([map[inp.mean(0, keepdim=True) > inp.mean(0, keepdim=True).min()].mean()
-    #                                   for map, inp in zip(anomaly_map, input)])
-
-    elif config.modality in ['RF'] and config.dataset == 'DDR':
+    elif config.modality == 'RF':
         anomaly_score = torch.tensor([map.max() for map in anomaly_map])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
@@ -163,10 +163,10 @@ def anom_val_step(input, return_loss: bool = True):
 
 
 def train():
-
-    print('Starting training PII...')
-
-    i_epoch = 0
+    """
+    Main training logic
+    """
+    print(f'Starting training {config.name}...')
     train_losses = []
     t_start = time()
 
@@ -211,26 +211,21 @@ def train():
                 train_losses = []
 
             if config.step % config.anom_val_frequency == 0:
-                # or i_iter == 10 or i_iter == 50 or i_iter == 100:
-                evaluate(config, small_testloader, anom_val_step, val_loader)
+                evaluate(config, small_testloader, anom_val_step)
 
             if config.step % config.val_frequency == 0:
                 validate()
-
-            if config.step % config.save_frequency == 0 and config.step != 0:
-                save_model(model, config, i_iter=config.step)
 
             if config.step >= config.max_steps:
                 save_model(model, config)
                 print(f'Reached {config.max_steps} iterations. Finished training {config.name}.')
                 return
-        i_epoch += 1
 
 
 if __name__ == '__main__':
     if config.eval:
         print('Evaluating model...')
-        evaluate(config, big_testloader, anom_val_step, val_loader)
+        evaluate(config, big_testloader, anom_val_step)
 
     else:
         train()

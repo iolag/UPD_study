@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset
 import numpy as np
 from UPD_study.utilities.utils import GenericDataloader
-from UPD_study.models.PII.fpi_utils import pii
+from UPD_study.models.PII.pii_utils import pii
 from argparse import Namespace
 from torch.utils.data import DataLoader
 from UPD_study.data.dataloaders.mri_preprocessing import (

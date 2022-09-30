@@ -113,24 +113,25 @@ def save_model(model: Union[nn.Module, Dict[str, nn.Module]], config: Namespace)
         model: nn.Module instance or dict of nn.Module instances to be saved
         config (Namespace): configuration object.
     """
+    config.save_path = os.path.join(config.save_path, 'saved_models')
     if config.method == 'RD':
         torch.save(model['decoder'].state_dict(),
-                   f'saved_models/{config.modality}/{config.name}_dec_.pth')
+                   f'{config.save_path}/{config.modality}/{config.name}_dec_.pth')
         torch.save(model['bn'].state_dict(),
-                   f'saved_models/{config.modality}/{config.name}_bn_.pth')
+                   f'{config.save_path}/{config.modality}/{config.name}_bn_.pth')
 
     elif config.method == 'CCD' and config.backbone_arch == 'vae':
         torch.save(model['encoder'].state_dict(),
-                   f'saved_models/{config.modality}/{config.name}_encoder_.pth')
+                   f'{config.save_path}/{config.modality}/{config.name}_encoder_.pth')
         torch.save(model['bottleneck'].state_dict(),
-                   f'saved_models/{config.modality}/{config.name}_bottleneck_.pth')
+                   f'{config.save_path}/{config.modality}/{config.name}_bottleneck_.pth')
     elif config.method == 'AMCons':
         torch.save(model['encoder'].state_dict(),
-                   f'saved_models/{config.modality}/{config.name}_enc_.pth')
+                   f'{config.save_path}/{config.modality}/{config.name}_enc_.pth')
         torch.save(model['decoder'].state_dict(),
-                   f'saved_models/{config.modality}/{config.name}_dec_.pth')
+                   f'{config.save_path}/{config.modality}/{config.name}_dec_.pth')
     else:
-        torch.save(model.state_dict(), f'saved_models/{config.modality}/{config.name}_.pth')
+        torch.save(model.state_dict(), f'{config.save_path}/{config.modality}/{config.name}_.pth')
 
 
 def load_model(config: Namespace) -> Tuple[nn.Module, ...]:
@@ -142,16 +143,19 @@ def load_model(config: Namespace) -> Tuple[nn.Module, ...]:
     Returns:
         nn.Module model instances for every method, loaded with saved weights
     """
+
+    config.save_path = os.path.join(config.save_path, 'saved_models')
+
     if config.method == 'RD':
 
-        load_dec = torch.load(f'saved_models/{config.modality}/{config.name}_dec_.pth')
-        load_bn = torch.load(f'saved_models/{config.modality}/{config.name}_bn_.pth')
+        load_dec = torch.load(f'{config.save_path}/{config.modality}/{config.name}_dec_.pth')
+        load_bn = torch.load(f'{config.save_path}/{config.modality}/{config.name}_bn_.pth')
         return load_dec, load_bn
 
     elif config.method == 'AMCons':
 
-        load_enc = torch.load(f'saved_models/{config.modality}/{config.name}_enc_.pth')
-        load_dec = torch.load(f'saved_models/{config.modality}/{config.name}_dec_.pth')
+        load_enc = torch.load(f'{config.save_path}/{config.modality}/{config.name}_enc_.pth')
+        load_dec = torch.load(f'{config.save_path}/{config.modality}/{config.name}_dec_.pth')
         return load_enc, load_dec
 
     elif config.method == 'f-anoGAN':
@@ -163,15 +167,15 @@ def load_model(config: Namespace) -> Tuple[nn.Module, ...]:
             generator_name = f'f-anoGAN_{config.modality}_{config.sequence}__seed:10_netG.pth'
             discriminator_name = f'f-anoGAN_{config.modality}_{config.sequence}__seed:10_netD.pth'
 
-        load_g = torch.load(os.path.join('saved_models',
+        load_g = torch.load(os.path.join(config.save_path,
                                          config.modality,
                                          generator_name))
 
-        load_d = torch.load(os.path.join('saved_models',
+        load_d = torch.load(os.path.join(config.save_path,
                                          config.modality,
                                          discriminator_name))
         if config.eval:
-            load_e = torch.load(f'saved_models/{config.modality}/{config.name}_netE.pth')
+            load_e = torch.load(f'{config.save_path}/{config.modality}/{config.name}_netE.pth')
             return load_g, load_d, load_e
 
         # for the 2 run scenario where wgan is already trained and we want to train encoder
@@ -179,7 +183,7 @@ def load_model(config: Namespace) -> Tuple[nn.Module, ...]:
             return load_g, load_d
 
     else:
-        return torch.load(f'saved_models/{config.modality}/{config.name}_.pth')
+        return torch.load(f'{config.save_path}/{config.modality}/{config.name}_.pth')
 
 
 def misc_settings(config: Namespace) -> None:
@@ -208,7 +212,6 @@ def misc_settings(config: Namespace) -> None:
         config.modality = 'CXR'
         config.disable_wandb = True
         config.eval = True
-        config.seed = 20
 
     if not config.eval:
         config.no_dice = True
@@ -243,7 +246,7 @@ def misc_settings(config: Namespace) -> None:
     name += f'_{config.name_add}_seed:{config.seed}'
 
     # create saved_models folder
-    os.makedirs(f'saved_models/{config.modality}', exist_ok=True)
+    os.makedirs(f'{config.save_path}/{config.modality}', exist_ok=True)
 
     # init wandb logger
     wandb_name = name
@@ -268,7 +271,7 @@ def misc_settings(config: Namespace) -> None:
     config.name = name
     config.logger = logger
     config.step = 0
-    print(config.name)
+    print(wandb_name)
     return
 
 
@@ -471,9 +474,10 @@ def load_data(config: Namespace) -> Tuple[DataLoader, ...]:
     msg = "anomal_split is too high or batch_size too high, Small testloader is empty."
     assert (len(small_testloader) != 0), msg
 
-    # if this is not an evaluation run, or method is CFLOW-AD which requires normal samples during inference
-    # restore batch size and return train and validation dataloaders along with testloaders
-    if not config.eval or config.method == 'CFLOW-AD':
+    # If this is not an evaluation run, or method is CFLOW-AD and DFR which require
+    # normal samples during inference.
+    # Restore batch size and return train and validation dataloaders along with testloaders.
+    if not config.eval or config.method in ['CFLOW-AD', 'DFR']:
         # restore desired batch_size
         config.batch_size = temp
 

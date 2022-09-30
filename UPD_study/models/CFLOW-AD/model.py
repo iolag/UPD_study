@@ -72,7 +72,6 @@ def subnet_fc(dims_in, dims_out):
 def load_decoder(config, dim_in):
     n_cond = config.condition_vec
     decoder = Ff.SequenceINN(dim_in)
-    print('CNF coder:', dim_in)
     for k in range(config.coupling_blocks):
         decoder.append(Fm.AllInOneBlock,
                        cond=0,

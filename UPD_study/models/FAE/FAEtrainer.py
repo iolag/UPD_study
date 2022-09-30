@@ -1,9 +1,12 @@
+"""
+adapted from https://github.com/FeliMe/feature-autoencoder
+"""
 from argparse import ArgumentParser
 from collections import defaultdict
 from time import time
 import numpy as np
 import torch
-from model import FeatureReconstructor
+from UPD_study.models.FAE.FAEmodel import FeatureReconstructor
 from torch import Tensor
 from torchinfo import summary
 from UPD_study.utilities.common_config import common_config
@@ -12,6 +15,7 @@ from UPD_study.utilities.utils import (save_model, seed_everything,
                                        misc_settings, log, load_model)
 from UPD_study.utilities.evaluate import evaluate
 from typing import Tuple
+import pathlib
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
 
@@ -43,8 +47,10 @@ def get_config():
     return parser.parse_args()
 
 
+# set initial script settings
 config = get_config()
 config.method = 'FAE'
+config.save_path = pathlib.Path(__file__).parents[0]
 config.center = True
 misc_settings(config)
 
@@ -63,7 +69,7 @@ seed_everything(config.seed)
 print("Initializing model...")
 model = FeatureReconstructor(config).to(config.device)
 
-# Load pre-trained backbone
+# load CCD pretrained backbone
 if config.load_pretrained and not config.eval:
     config.arch = 'resnet18'
     model.extractor.backbone = load_pretrained(model.extractor.backbone, config)
@@ -88,6 +94,9 @@ if config.space_benchmark:
 
 
 def train_step(input) -> dict:
+    """
+    Training step
+    """
     model.train()
     optimizer.zero_grad()
     loss_dict = model.loss(input)
@@ -98,7 +107,9 @@ def train_step(input) -> dict:
 
 
 def val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
-
+    """
+    Validation step on validation or evaluation (test samples == True) validation set.
+    """
     model.eval()
     with torch.no_grad():
         loss_dict = model.loss(input)
@@ -123,9 +134,11 @@ def val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
 
 
 def train():
-    print(f'Starting training {config.name}...')
+    """
+    Main training logic
+    """
 
-    i_epoch = 0
+    print(f'Starting training {config.name}...')
     train_losses = defaultdict(list)
     t_start = time()
 
@@ -167,12 +180,11 @@ def train():
                 print(f'Reached {config.max_steps} iterations. Finished training {config.name}.')
                 return
 
-        i_epoch += 1
-        print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
-
 
 def validate(val_loader, config) -> None:
-
+    """
+    Validation logic on normal validation set.
+    """
     val_losses = defaultdict(list)
     i_val_step = 0
 
