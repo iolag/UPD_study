@@ -1,5 +1,5 @@
 """
-adapted from: ccd
+adapted from: https://github.com/tianyu0207/CCD/
 """
 import torch
 import torch.nn as nn
@@ -126,8 +126,6 @@ class ContrastiveModel(nn.Module):
         self.backbone_dim = backbone['dim']
         self.class_num = 4  # num of strong aug versions
         self.cls_head_number = config.cls_head_number
-        # in this implementation there's a more elegant way to do only contrastive head
-        # https://github.com/sthalles/SimCLR/blob/master/run.py
         self.contrastive_head = nn.Sequential(
             nn.Linear(self.backbone_dim, self.backbone_dim),
             nn.ReLU(),
@@ -137,7 +135,8 @@ class ContrastiveModel(nn.Module):
             self.classification_head = nn.Sequential(nn.Linear(self.backbone_dim, features_dim),
                                                      nn.ReLU(),
                                                      NormalizedLinear(features_dim, self.class_num))
-        # this doesn't work even though it was default in official implementation of paper
+
+        # this didn't work in our experiments even though it was default in official implementation of paper
         else:
             self.classification_head = nn.Sequential(
                 NormalizedLinear(self.backbone_dim, self.class_num))

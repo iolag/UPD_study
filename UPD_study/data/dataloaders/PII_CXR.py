@@ -8,12 +8,12 @@ from UPD_study.models.PII.fpi_utils import pii
 from argparse import Namespace
 from torch.utils.data import DataLoader
 import os
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from torch import Tensor
 from glob import glob
 
 
-def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List]:
+def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, ...]]:
     """
     Return a list of all the paths of normal files.
 
@@ -24,7 +24,6 @@ def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List
         images (List): List of paths of normal files.
         masks (List): (If train == True) List of paths of segmentations.
 
-    config should include "datasets_dir", "sex", "AP_only", "sup_devices"
     """
     ap = "AP_" if config.AP_only else ""
     sup = "sup_" if config.sup_devices else "no_sup_"
@@ -118,14 +117,16 @@ def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List
 
 class NormalDataset(Dataset):
     """
-    Dataset class for the Healthy datasets.
+    PII's dataset class for the training set CXR samples from CheXpert Dataset.
     """
 
     def __init__(self, files, config: Namespace):
-
+        """
+        Args
+            files: list of image paths for healthy train CXR images
+            config: Namespace() config object
+        """
         self.center = config.center
-        self.stadardize = config.stadardize
-
         self.files = files
 
         self.transforms = T.Compose([
@@ -134,30 +135,19 @@ class NormalDataset(Dataset):
             T.ToTensor(),
         ])
 
-        mean = 0.5364
-        std = 0.2816
-        self.norm = T.Normalize(mean, std)
-
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, idx):
 
         img = np.asarray(self.transforms(Image.open(self.files[idx])))
-
-        #img = img[None, :, :]
-
-        # total_mask = np.zeros_like(img) * 1.
-
         idx2 = np.random.randint(0, len(self))
         img2 = np.asarray(self.transforms(Image.open(self.files[idx2])))
-        #img2 = img2[None, :, :]
         img, mask = pii(img, img2, is_mri=False)
         img = torch.FloatTensor(img) / img.max()
         mask = torch.FloatTensor(mask)
-
+        # Center input
         if self.center:
-            # Center input
             img = (img - 0.5) * 2
 
         return img, mask
@@ -165,8 +155,7 @@ class NormalDataset(Dataset):
 
 class AnomalDataset(Dataset):
     """
-    Dataset class for the Segmented Colonoscopy
-    images from the Hyper-Kvasir Dataset.
+    Dataset class for the test set CXR images from CheXpert Dataset.
     """
 
     def __init__(self,
@@ -177,15 +166,16 @@ class AnomalDataset(Dataset):
                  config: Namespace):
         """
         Args:
-            images: list of image paths for segmented colonoscopy images
-            masks: list of image paths for corresponding segmentations
+            normal_paths (List): normal paths
+            anomal_paths (List): anomal paths
+            labels_normal (List): normal sample labels
+            labels_anomal (List): anomal sample labels
+            segmentations (List): binary segmentation masks
             config: Namespace() config object
 
-        config should include "image_size"
         """
 
         self.center = config.center
-        self.stadardize = config.stadardize
 
         self.images = anomal_paths + normal_paths
         self.labels = labels_anomal + labels_normal
@@ -196,10 +186,6 @@ class AnomalDataset(Dataset):
             T.CenterCrop(config.image_size),
             T.ToTensor()
         ])
-
-        mean = 0.5364
-        std = 0.2816
-        self.norm = T.Normalize(mean, std)
 
     def __len__(self):
         return len(self.images)
@@ -213,12 +199,12 @@ class AnomalDataset(Dataset):
         image = Image.open(self.images[idx])
         image = self.image_transforms(image)
 
-        if self.stadardize:
-            image = self.norm(image)
         if self.center:
             # Center input
             image = (image - 0.5) * 2
-        # for compatibility, create fake image masks to provide as labels
+
+        # for compatibility with downstream methods that assume the existance
+        # of ground truth segmentation, create fake image masks to provide as labels
         # negative = zero tensor, positive = Ident tensor
         if self.labels[idx] != 0:
             mask = torch.eye(image.shape[-1]).unsqueeze(0)
@@ -228,7 +214,8 @@ class AnomalDataset(Dataset):
         return image, mask
 
 
-def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLoader, DataLoader]:
+def get_dataloaders(config: Namespace,
+                    train: bool = True) -> Tuple[DataLoader, DataLoader]:
     """
     Return pytorch Dataloader instances.
 
@@ -236,11 +223,9 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
         config (Namespace): Config object.
         train (bool): True for trainloaders, False for testloader with masks.
     Returns:
-        train_dl (DataLoader) if train == True and config.spli_idx = 1
-        train_dl, val_dl  (Tuple[DataLoader,DataLoader]) if train == True and config.spli_idx != 1
-        test_dl (DataLoader) if train == False
+        train_dataloader, validation_dataloader  (Tuple[DataLoader,DataLoader]) if train == True
+        big test_dataloader, small test_dataloader  (Tuple[DataLoader,DataLoader]) if train == False
 
-    config should include "dataset_split", "num_workers", "batch_size"
     """
 
     if train:
@@ -253,17 +238,18 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
         idx = torch.randperm(len(trainfiles))
         trainfiles = list(np.array(trainfiles)[idx])
 
-        # percentage experiment: keep a specific percentage of the train files, or a single image.
+        # percentage experiment
+        # keep a specific percentage of the train files, or a single image.
         # for seed != 10 (stadard seed), index the list backwards
         if config.percentage != 100:
             if config.percentage == -1:  # single img scenario
                 if config.seed == 10:
-                    trainfiles = [trainfiles[0]]
+                    trainfiles = [trainfiles[0]] * 500
                 else:
-                    trainfiles = [trainfiles[-1]]
+                    trainfiles = [trainfiles[-1]] * 500
                 print(
-                    f'Number of train samples ({len(trainfiles)}) lower than batch size ({config.batch_size}). Repeating trainfiles {config.batch_size} times.')
-                trainfiles = trainfiles * config.batch_size
+                    f'Number of train samples ({len(trainfiles)}) lower than ',
+                    f'batch size ({config.batch_size}). Repeating trainfiles 500 times.')
             else:
                 if config.seed == 10:
                     trainfiles = trainfiles[:int(len(trainfiles) * (config.percentage / 100))]
@@ -271,28 +257,20 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
                     trainfiles = trainfiles[-int(len(trainfiles) * (config.percentage / 100)):]
                 if len(trainfiles) < config.batch_size:
                     print(
-                        f'Number of train samples ({len(trainfiles)}) lower than batch size ({config.batch_size}). Repeating trainfiles 10 times.')
+                        f'Number of train samples ({len(trainfiles)}) lower than ',
+                        'batch size ({config.batch_size}). Repeating trainfiles 10 times.')
                     trainfiles = trainfiles * 10
 
         # calculate dataset split index
         split_idx = int(len(trainfiles) * config.normal_split)
 
-        if split_idx != len(trainfiles):
+        trainset = NormalDataset(trainfiles[:split_idx], config)
+        valset = NormalDataset(trainfiles[split_idx:], config)
 
-            trainset = NormalDataset(trainfiles[:split_idx], config)
-            valset = NormalDataset(trainfiles[split_idx:], config)
+        train_dl = GenericDataloader(trainset, config)
+        val_dl = GenericDataloader(valset, config)
 
-            train_dl = GenericDataloader(trainset, config)
-            val_dl = GenericDataloader(valset, config)
-
-            return train_dl, val_dl
-
-        else:
-
-            trainset = NormalDataset(trainfiles, config)
-            train_dl = GenericDataloader(trainset, config)
-
-            return train_dl
+        return train_dl, val_dl
 
     elif not train:
         # get list of img and mask paths

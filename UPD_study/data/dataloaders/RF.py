@@ -54,7 +54,6 @@ class NormalDataset(Dataset):
         Args
             files: list of image paths for healthy RF images
             config: Namespace() config object
-
         """
 
         self.files = files
@@ -72,9 +71,6 @@ class NormalDataset(Dataset):
 
         image = Image.open(file)
         image = self.transforms(image)
-        if self.stadardize:
-            image = self.norm(image)
-
         if self.center:
             # Center input
             image = (image - 0.5) * 2
@@ -115,11 +111,13 @@ class AnomalDataset(Dataset):
                  config: Namespace):
         """
         Args:
-            images: list of image paths for segmented colonoscopy images
-            masks: list of image paths for corresponding segmentations
+            normal_paths (List): normal paths
+            anomal_paths (List): anomal paths
+            labels_normal (List): normal sample labels
+            labels_anomal (List): anomal sample labels
+            segmentations (List): binary segmentation masks
             config: Namespace() config object
 
-        config should include "image_size"
         """
 
         self.center = config.center
@@ -163,7 +161,8 @@ class AnomalDataset(Dataset):
         return image, segmentation
 
 
-def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLoader, DataLoader]:
+def get_dataloaders(config: Namespace,
+                    train: bool = True) -> Tuple[DataLoader, DataLoader]:
     """
     Return pytorch Dataloader instances.
 
@@ -171,11 +170,9 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
         config (Namespace): Config object.
         train (bool): True for trainloaders, False for testloader with masks.
     Returns:
-        train_dl (DataLoader) if train == True and config.spli_idx = 1
-        train_dl, val_dl  (Tuple[DataLoader,DataLoader]) if train == True and config.spli_idx != 1
-        test_dl (DataLoader) if train == False
+        train_dataloader, validation_dataloader  (Tuple[DataLoader,DataLoader]) if train == True
+        big test_dataloader, small test_dataloader  (Tuple[DataLoader,DataLoader]) if train == False
 
-    config should include "dataset_split", "num_workers", "batch_size"
     """
 
     if train:
@@ -206,22 +203,13 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
         # calculate dataset split index
         split_idx = int(len(trainfiles) * config.normal_split)
 
-        if split_idx != len(trainfiles):
+        trainset = NormalDataset(trainfiles[:split_idx], config)
+        valset = NormalDataset(trainfiles[split_idx:], config)
 
-            trainset = NormalDataset(trainfiles[:split_idx], config)
-            valset = NormalDataset(trainfiles[split_idx:], config)
+        train_dl = GenericDataloader(trainset, config)
+        val_dl = GenericDataloader(valset, config)
 
-            train_dl = GenericDataloader(trainset, config)
-            val_dl = GenericDataloader(valset, config)
-
-            return train_dl, val_dl
-
-        else:
-
-            trainset = NormalDataset(trainfiles, config)
-            train_dl = GenericDataloader(trainset, config)
-
-            return train_dl
+        return train_dl, val_dl
 
     elif not train:
         # get list of img and mask paths
@@ -231,34 +219,21 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
         split_idx = int(len(normal) * config.anomal_split)
         split_idx_anomal = int(len(anomal) * config.anomal_split)
 
-        if split_idx != len(anomal):
+        big = AnomalDataset(normal[:split_idx],
+                            anomal[:split_idx_anomal],
+                            labels_normal[:split_idx],
+                            labels_anomal[:split_idx_anomal],
+                            segmentations[:split_idx_anomal],
+                            config)
 
-            big = AnomalDataset(normal[:split_idx],
-                                anomal[:split_idx_anomal],
-                                labels_normal[:split_idx],
-                                labels_anomal[:split_idx_anomal],
-                                segmentations[:split_idx_anomal],
-                                config)
+        small = AnomalDataset(normal[split_idx:],
+                              anomal[split_idx_anomal:],
+                              labels_normal[split_idx:],
+                              labels_anomal[split_idx_anomal:],
+                              segmentations[split_idx_anomal:],
+                              config)
 
-            small = AnomalDataset(normal[split_idx:],
-                                  anomal[split_idx_anomal:],
-                                  labels_normal[split_idx:],
-                                  labels_anomal[split_idx_anomal:],
-                                  segmentations[split_idx_anomal:],
-                                  config)
+        big_testloader = GenericDataloader(big, config, shuffle=config.shuffle)
+        small_testloader = GenericDataloader(small, config, shuffle=config.shuffle)
 
-            big_testloader = GenericDataloader(big, config, shuffle=config.shuffle)
-            small_testloader = GenericDataloader(small, config, shuffle=config.shuffle)
-
-            return big_testloader, small_testloader
-        else:
-            dataset = AnomalDataset(normal,
-                                    anomal,
-                                    labels_normal,
-                                    labels_anomal,
-                                    segmentations,
-                                    config)
-
-            testloader = GenericDataloader(dataset, config, shuffle=False)
-
-            return testloader
+        return big_testloader, small_testloader

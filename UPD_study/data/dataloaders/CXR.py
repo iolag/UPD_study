@@ -1,5 +1,5 @@
 import os
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms as T
@@ -11,7 +11,7 @@ from glob import glob
 import torch
 
 
-def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List]:
+def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, ...]]:
     """
     Return a list of all the paths of normal files.
 
@@ -22,7 +22,6 @@ def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List
         images (List): List of paths of normal files.
         masks (List): (If train == True) List of paths of segmentations.
 
-    config should include "datasets_dir", "sex", "AP_only", "sup_devices"
     """
     ap = "AP_" if config.AP_only else ""
     sup = "sup_" if config.sup_devices else "no_sup_"
@@ -117,19 +116,17 @@ def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List
 
 class NormalDataset(Dataset):
     """
-    Dataset class for the Healthy CXR images
-    from CheXpert Dataset.
+    Dataset class for the training set CXR images from CheXpert Dataset.
     """
 
     def __init__(self, files: List, config: Namespace):
         """
         Args
-            files: list of image paths for healthy CXR images
+            files: list of image paths for healthy train CXR images
             config: Namespace() config object
         """
 
         self.center = config.center
-
         self.files = files
 
         self.transforms = T.Compose([
@@ -161,7 +158,7 @@ class NormalDataset(Dataset):
 
 class AnomalDataset(Dataset):
     """
-    Dataset class for the test CXR images from CheXpert Dataset.
+    Dataset class for the test set CXR images from CheXpert Dataset.
     """
 
     def __init__(self,
@@ -172,13 +169,13 @@ class AnomalDataset(Dataset):
                  config: Namespace):
         """
         Args:
-            normal_paths: list of image paths for healthy CXR images
-            anomal_paths: list of image paths for unhealthy CXR images
-            labels_normal: list of labels for healthy CXR images
-            labels_anomal: list of labels for unhealthy CXR images
+            normal_paths (List): normal paths
+            anomal_paths (List): anomal paths
+            labels_normal (List): normal sample labels
+            labels_anomal (List): anomal sample labels
+            segmentations (List): binary segmentation masks
             config: Namespace() config object
 
-        config should include "image_size"
         """
 
         self.center = config.center
@@ -220,7 +217,8 @@ class AnomalDataset(Dataset):
         return image, mask
 
 
-def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLoader, DataLoader]:
+def get_dataloaders(config: Namespace,
+                    train: bool = True) -> Tuple[DataLoader, DataLoader]:
     """
     Return pytorch Dataloader instances.
 
@@ -228,11 +226,9 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
         config (Namespace): Config object.
         train (bool): True for trainloaders, False for testloader with masks.
     Returns:
-        train_dl (DataLoader) if train == True and config.spli_idx = 1
-        train_dl, val_dl  (Tuple[DataLoader,DataLoader]) if train == True and config.spli_idx != 1
-        test_dl (DataLoader) if train == False
+        train_dataloader, validation_dataloader  (Tuple[DataLoader,DataLoader]) if train == True
+        big test_dataloader, small test_dataloader  (Tuple[DataLoader,DataLoader]) if train == False
 
-    config should include "dataset_split", "num_workers", "batch_size"
     """
 
     if train:
@@ -271,22 +267,13 @@ def get_dataloaders(config: Namespace, train=True) -> DataLoader or Tuple[DataLo
         # calculate dataset split index
         split_idx = int(len(trainfiles) * config.normal_split)
 
-        if split_idx != len(trainfiles):
+        trainset = NormalDataset(trainfiles[:split_idx], config)
+        valset = NormalDataset(trainfiles[split_idx:], config)
 
-            trainset = NormalDataset(trainfiles[:split_idx], config)
-            valset = NormalDataset(trainfiles[split_idx:], config)
+        train_dl = GenericDataloader(trainset, config)
+        val_dl = GenericDataloader(valset, config)
 
-            train_dl = GenericDataloader(trainset, config)
-            val_dl = GenericDataloader(valset, config)
-
-            return train_dl, val_dl
-
-        else:
-
-            trainset = NormalDataset(trainfiles, config)
-            train_dl = GenericDataloader(trainset, config)
-
-            return train_dl
+        return train_dl, val_dl
 
     elif not train:
         # get list of img and mask paths

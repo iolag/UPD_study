@@ -18,12 +18,13 @@ class SimCLRLoss(nn.Module):
             - features: hidden feature representation of shape [b, 2, dim]
 
         output:
-            - loss: loss computed according to SimCLR 
+            - loss: loss computed according to SimCLR
         """
 
         b, n, dim = features.size()
+        device = features.get_device()
         assert(n == 2)
-        mask = torch.eye(b, dtype=torch.float32).cuda()
+        mask = torch.eye(b, dtype=torch.float32).to(device)
 
         contrast_features = torch.cat(torch.unbind(features, dim=1), dim=0)
         anchor = features[:, 0]
@@ -36,7 +37,7 @@ class SimCLRLoss(nn.Module):
         logits = dot_product - logits_max.detach()
 
         mask = mask.repeat(1, 2)
-        logits_mask = torch.scatter(torch.ones_like(mask), 1, torch.arange(b).view(-1, 1).cuda(), 0)
+        logits_mask = torch.scatter(torch.ones_like(mask), 1, torch.arange(b).view(-1, 1).to(device), 0)
         mask = mask * logits_mask
 
         # Log-softmax

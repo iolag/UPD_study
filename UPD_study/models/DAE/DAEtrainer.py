@@ -1,7 +1,5 @@
-
-import sys
-import os
-sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
+#  Copyright (C) 2022 Canon Medical Systems Corporation. All rights reserved
+# GNU General Public License v2.0
 from argparse import ArgumentParser
 import numpy as np
 import torch
@@ -13,12 +11,13 @@ from torch import Tensor
 from typing import Tuple
 from unet import UNet
 from scipy.ndimage import gaussian_filter
-from Utilities.common_config import common_config
-from Utilities.utils import (save_model, seed_everything,
-                             load_data, load_pretrained,
-                             misc_settings, ssim_map,
-                             load_model, log, str_to_bool)
-from Utilities.evaluate import evaluate
+from torchinfo import summary
+from UPD_study.utilities.common_config import common_config
+from UPD_study.utilities.utils import (save_model, seed_everything,
+                                       load_data, load_pretrained,
+                                       misc_settings, ssim_map,
+                                       load_model, log, str_to_bool)
+from UPD_study.utilities.evaluate import evaluate
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
 
@@ -41,9 +40,9 @@ def get_config():
     return parser.parse_args()
 
 
+# set initial script settings
 config = get_config()
 config.method = 'DAE'
-#config.center = True
 misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
@@ -76,13 +75,13 @@ if config.eval:
     model.load_state_dict(load_model(config))
     print('Saved model loaded.')
 
-if config.speed_benchmark:
-    from torchinfo import summary
+if config.space_benchmark:
     a = summary(model, (16, 3, 128, 128), verbose=0)
     params = a.total_params
     macs = a.total_mult_adds
     print('Number of Million parameters: ', params / 1e06)
-    print('Number of GMACs: ', macs / 1e09)
+    exit(0)
+
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
 
 # print(model.forward_down_flatten(next(iter(train_loader)).cuda())[0].shape)
@@ -111,7 +110,6 @@ def add_noise(input):
         ns *= mask
     if config.center:
         ns = (ns - 0.5) * 2
-    # ns = ns.expand(-1, 3, -1, -1)W
     res = input + ns
 
     return res, ns
@@ -128,12 +126,13 @@ def train_step(input, noisy_input) -> Tuple[float, Tensor, Tensor]:
     return loss.item()
 
 
-def anom_val_step(input, return_loss: bool = True) -> Tuple[dict, Tensor]:
+def anom_val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
 
     model.eval()
     with torch.no_grad():
         # forward pass
         input_recon = model(input)
+
     # Anomaly map
     if config.ssim_eval:
         anomaly_map = ssim_map(input_recon, input)
@@ -151,20 +150,12 @@ def anom_val_step(input, return_loss: bool = True) -> Tuple[dict, Tensor]:
             anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
 
     # for MRI, RF apply brainmask
-    if config.modality in ['MRI', 'CT']:
+    if config.modality == 'MRI':
         mask = torch.stack([inp > inp.min() for inp in input])
-
-        if config.get_images:
-            anomaly_map *= mask
-            mins = [(map[map > map.min()]) for map in anomaly_map]
-            mins = [map.min() for map in mins]
-
-            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
-
         anomaly_map *= mask
         anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
 
-    elif config.modality in ['RF'] and config.dataset == 'DDR':
+    elif config.modality == 'RF':
         anomaly_score = torch.tensor([map.max() for map in anomaly_map])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
@@ -173,9 +164,8 @@ def anom_val_step(input, return_loss: bool = True) -> Tuple[dict, Tensor]:
 
 
 def train():
-    print('Starting training DAE...')
+    print(f'Starting training {config.name}...')
 
-    i_epoch = 0
     train_losses = []
     t_start = time()
 
@@ -199,28 +189,23 @@ def train():
                 log({'train/loss': np.mean(train_losses)}, config)
                 # Reset
                 train_losses = []
+
             if config.step % 32 == 0 and config.lr_schedule:
                 lr_scheduler.step()
 
             if config.step % config.anom_val_frequency == 0:
-                # or i_iter == 10 or i_iter == 50 or i_iter == 100:
-                evaluate(config, small_testloader, anom_val_step, val_loader)
-
-            if config.step % config.save_frequency == 0:
-                save_model(model, config, i_iter=config.step)
+                evaluate(config, small_testloader, anom_val_step)
 
             if config.step >= config.max_steps:
                 save_model(model, config)
                 print(f'Reached {config.max_steps} iterations. Finished training {config.name}.')
                 return
 
-        i_epoch += 1
-
 
 if __name__ == '__main__':
     if config.eval:
         print('Evaluating model...')
-        evaluate(config, big_testloader, anom_val_step, val_loader)
+        evaluate(config, big_testloader, anom_val_step)
 
     else:
         train()

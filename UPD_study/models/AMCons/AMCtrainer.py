@@ -1,7 +1,7 @@
-# Add the parent directory to sys.path to allow importing from there
-import sys
-import os
-sys.path.append(os.path.expanduser('~/thesis/UAD_study/'))
+"""
+adapted from https://github.com/jusiro/constrained_anomaly_segmentation
+"""
+
 from argparse import ArgumentParser
 from collections import defaultdict
 from time import time
@@ -9,11 +9,13 @@ import numpy as np
 from models import Encoder, Decoder
 import torch
 from torch import Tensor
-from Utilities.common_config import common_config
-from Utilities.utils import (save_model, seed_everything,
-                             load_data, load_pretrained,
-                             misc_settings, log, load_model)
-from Utilities.evaluate import evaluate
+from torchinfo import summary
+from UPD_study.utilities.evaluate import evaluate
+from UPD_study.utilities.common_config import common_config
+from UPD_study.utilities.utils import (save_model, seed_everything,
+                                       load_data, load_pretrained,
+                                       misc_settings, load_model, log)
+
 from typing import Tuple
 import torch.nn.functional as F
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
@@ -45,6 +47,7 @@ def get_config():
     return parser.parse_args()
 
 
+# set initial script settings
 config = get_config()
 config.method = 'AMCons'
 misc_settings(config)
@@ -52,7 +55,7 @@ misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
 
-# specific seed for deterministic dataloader creation
+# specific seed for creating the dataloader
 seed_everything(42)
 
 train_loader, val_loader, big_testloader, small_testloader = load_data(config)
@@ -99,16 +102,12 @@ if config.eval:
     print('Saved model loaded.')
 
 if config.speed_benchmark:
-    from torchinfo import summary
     input = next(iter(big_testloader))[0].cuda()
-
     a = summary(enc, (16, 3, 128, 128), verbose=0)
     b = summary(dec, enc(input)[0].shape, verbose=0)
     params = a.total_params + b.total_params
-    macs = a.total_mult_adds + b.total_mult_adds
     print('Number of Million parameters: ', params / 1e06)
-    print('Number of GMACs: ', macs / 1e09)
-
+    exit(0)
 
 """"""""""""""""""""""""""""""""""" Training """""""""""""""""""""""""""""""""""
 
@@ -156,10 +155,46 @@ def train_step(input) -> dict:
     return {'loss': loss, 'rec_loss': r_loss, 'kl_loss': kl_loss, 'entropy_loss': entropy_loss}
 
 
-def train():
-    print('Starting training AMCons...')
+def val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
+    enc.eval()
+    dec.eval()
 
-    i_epoch = 0
+    # Get reconstruction error map
+    z, _, _, f = enc(input)
+    input_recon = torch.sigmoid(dec(z)[0]).detach()
+
+    anom_map_small = torch.mean(f[config.level_cams], 1)
+    # Restore original shape
+    anomaly_map = F.interpolate(anom_map_small.unsqueeze(1),
+                                size=(config.image_size, config.image_size),
+                                mode='bilinear',
+                                align_corners=True).detach()
+
+    # for MRI apply brainmask
+    if config.modality in ['MRI', 'CT']:
+        mask = torch.stack([inp > inp.min() for inp in input])
+
+        if config.get_images:
+            anomaly_map *= mask
+            mins = [(map[map > map.min()]) for map in anomaly_map]
+            mins = [map.min() for map in mins]
+
+            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
+
+        anomaly_map *= mask
+        anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
+
+    elif config.modality in ['RF'] and config.dataset == 'DDR':
+        anomaly_score = torch.tensor([map.max() for map in anomaly_map])
+    else:
+        anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
+
+    return anomaly_map, anomaly_score, input_recon
+
+
+def train():
+    print(f'Starting training {config.name}...')
+
     train_losses = defaultdict(list)
     t_start = time()
 
@@ -197,101 +232,16 @@ def train():
             if config.step % config.anom_val_frequency == 0:
                 evaluate(config, small_testloader, val_step, val_loader)
 
-            # if config.step % config.save_frequency == 0:
-            #     save_model(e, config, i_iter=config.step)
-            #     save_model(model, config, i_iter=config.step)
-
             if config.step >= config.max_steps:
                 save_model(model, config)
                 print(f'Reached {config.max_steps} iterations. Finished training {config.name}.')
                 return
 
-        i_epoch += 1
-        # print(f'Finished epoch {i_epoch}, ({config.step} iterations)')
-
-
-def val_step(input, return_loss: bool = True) -> Tuple[dict, Tensor]:
-    enc.eval()
-    dec.eval()
-
-    # Get reconstruction error map
-    z, _, _, f = enc(input)
-    input_recon = torch.sigmoid(dec(z)[0]).detach()
-
-    anom_map_small = torch.mean(f[config.level_cams], 1)
-    # Restore original shape
-    anomaly_map = F.interpolate(anom_map_small.unsqueeze(1),
-                                size=(config.image_size, config.image_size),
-                                mode='bilinear',
-                                align_corners=True).detach()
-
-    # for MRI apply brainmask
-    if config.modality in ['MRI', 'CT']:
-        mask = torch.stack([inp > inp.min() for inp in input])
-
-        if config.get_images:
-            anomaly_map *= mask
-            mins = [(map[map > map.min()]) for map in anomaly_map]
-            mins = [map.min() for map in mins]
-
-            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
-
-        anomaly_map *= mask
-        anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
-
-    elif config.modality in ['RF'] and config.dataset == 'DDR':
-        anomaly_score = torch.tensor([map.max() for map in anomaly_map])
-    else:
-        anomaly_score = torch.tensor([map.mean() for map in anomaly_map])
-
-    return anomaly_map, anomaly_score, input_recon
-
-
-# def validate(val_loader, config) -> None:
-
-#     val_losses = defaultdict(list)
-#     i_val_step = 0
-
-#     for input in val_loader:
-
-#         i_val_step += 1
-
-#         input = input.to(config.device)
-
-#         loss_dict, anomaly_map, anomaly_score = val_step(input)
-
-#         for k, v in loss_dict.items():
-#             val_losses[k].append(v.item())
-
-#         if i_val_step >= config.val_steps:
-#             break
-
-#     # Print validation results
-#     log_msg = 'Validation losses on normal samples: '
-#     log_msg += " - ".join([f'{k}: {np.mean(v):.4f}' for k, v in val_losses.items()])
-#     print(log_msg)
-
-#     # Log to wandb
-#     log(
-#         {f'val/{k}': np.mean(v)
-#          for k, v in val_losses.items()},
-#         config
-#     )
-
-#     # log images and residuals
-
-#     log({
-#         'val/input': input,
-#         'val/res': anomaly_map,
-#     }, config)
-
-#     return np.mean(val_losses['rec_loss'])
-
 
 if __name__ == '__main__':
     if config.eval:
         print('Evaluating model...')
-        evaluate(config, big_testloader, val_step, val_loader)
+        evaluate(config, big_testloader, val_step)
 
     else:
         train()

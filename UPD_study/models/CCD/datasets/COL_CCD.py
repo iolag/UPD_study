@@ -1,3 +1,6 @@
+"""
+adapted from: https://github.com/tianyu0207/CCD/
+"""
 import os
 import numpy as np
 import torch

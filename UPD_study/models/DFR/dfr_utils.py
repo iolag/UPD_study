@@ -1,3 +1,8 @@
+
+"""
+adapted from https://github.com/YoungGod/DFR and modified to work with efficient PyTorch modules
+"""
+
 import torch
 
 

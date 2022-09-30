@@ -1,3 +1,7 @@
+"""
+adapted from https://github.com/YoungGod/DFR by Felix Meissen https://github.com/FeliMe
+"""
+
 from typing import Dict, List, Tuple
 import torch
 import torch.nn as nn

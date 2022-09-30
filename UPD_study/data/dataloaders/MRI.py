@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union
+from typing import List, Tuple
 import torch
 from torch.utils.data import Dataset
 import numpy as np
@@ -73,8 +73,7 @@ class AnomalDataset(Dataset):
 
 
 def get_dataloaders(config: Namespace,
-                    train: bool = True) -> Union[DataLoader, Tuple[DataLoader,
-                                                                   DataLoader]]:
+                    train: bool = True) -> Tuple[DataLoader, DataLoader]:
     """
     Return pytorch Dataloader instances.
 
@@ -82,21 +81,19 @@ def get_dataloaders(config: Namespace,
         config (Namespace): Config object.
         train (bool): True for trainloaders, False for testloader with masks.
     Returns:
-        train_dl (DataLoader) if train == True and config.spli_idx = 1
-        train_dl, val_dl  (Tuple[DataLoader,DataLoader]) if train == True and
-        config.spli_idx != 1
-        test_dl (DataLoader) if train == False
+        train_dataloader, validation_dataloader  (Tuple[DataLoader,DataLoader]) if train == True
+        big test_dataloader, small test_dataloader  (Tuple[DataLoader,DataLoader]) if train == False
 
-    config must incl. "dataset_split", "num_workers", "batch_size", "sequence"
     """
 
     if train:
         config.return_volumes = False
-        # get array of slices
 
+        # if percentage experiment, return unconcated volumes: slices.shape = [volume,slice,c,h,w]
         if config.percentage != 100:
             config.return_volumes = True
 
+        # get array of slices
         slices = get_camcan_slices(config)
 
         # percentage experiment: keep a specific percentage of the volumes, or a single volume.
@@ -123,22 +120,13 @@ def get_dataloaders(config: Namespace,
         # calculate dataset split index
         split_idx = int(len(slices) * config.normal_split)
 
-        if split_idx != len(slices):
+        trainset = NormalDataset(slices[:split_idx], config)
+        valset = NormalDataset(slices[split_idx:], config)
 
-            trainset = NormalDataset(slices[:split_idx], config)
-            valset = NormalDataset(slices[split_idx:], config)
+        train_dl = GenericDataloader(trainset, config)
+        val_dl = GenericDataloader(valset, config)
 
-            train_dl = GenericDataloader(trainset, config)
-            val_dl = GenericDataloader(valset, config)
-
-            return train_dl, val_dl
-
-        else:
-
-            trainset = NormalDataset(slices, config)
-            train_dl = GenericDataloader(trainset, config)
-
-            return train_dl
+        return train_dl, val_dl
 
     elif not train:
 
@@ -155,47 +143,29 @@ def get_dataloaders(config: Namespace,
 
         split_idx = int(len(slices) * config.anomal_split)
 
-        # if small part of anomal set is needed for validation (config.anomal_split != 1.0)
-        if split_idx != len(slices):
+        slices_big = np.concatenate(slices[:split_idx], axis=0)
+        slices_small = np.concatenate(slices[split_idx:], axis=0)
+        seg_big = np.concatenate(segmentations[:split_idx], axis=0)
+        seg_small = np.concatenate(segmentations[split_idx:], axis=0)
 
-            slices_big = np.concatenate(slices[:split_idx], axis=0)
-            slices_small = np.concatenate(slices[split_idx:], axis=0)
-            seg_big = np.concatenate(segmentations[:split_idx], axis=0)
-            seg_small = np.concatenate(segmentations[split_idx:], axis=0)
+        # keep slices with brain pixels in them
+        non_zero_idx_s = np.sum(slices_small, axis=(1, 2, 3)) > 0
+        slices_small = slices_small[non_zero_idx_s]
+        seg_small = seg_small[non_zero_idx_s]
 
-            # keep slices with brain pixels in them
-            non_zero_idx_s = np.sum(slices_small, axis=(1, 2, 3)) > 0
-            slices_small = slices_small[non_zero_idx_s]
-            seg_small = seg_small[non_zero_idx_s]
+        non_zero_idx_b = np.sum(slices_big, axis=(1, 2, 3)) > 0
+        slices_big = slices_big[non_zero_idx_b]
+        seg_big = seg_big[non_zero_idx_b]
 
-            non_zero_idx_b = np.sum(slices_big, axis=(1, 2, 3)) > 0
-            slices_big = slices_big[non_zero_idx_b]
-            seg_big = seg_big[non_zero_idx_b]
+        for i in slices_big:
+            if np.count_nonzero(i) < 5:
+                print(np.count_nonzero(i))
+        big = AnomalDataset([slices_big, seg_big], config)
+        small = AnomalDataset([slices_small, seg_small], config)
 
-            for i in slices_big:
-                if np.count_nonzero(i) < 5:
-                    print(np.count_nonzero(i))
-            big = AnomalDataset([slices_big, seg_big], config)
-            small = AnomalDataset([slices_small, seg_small], config)
+        big_test_dl = GenericDataloader(big, config, shuffle=config.shuffle)
+        small_test_dl = GenericDataloader(small, config, shuffle=config.shuffle)
 
-            big_test_dl = GenericDataloader(big, config, shuffle=config.shuffle)
-            small_test_dl = GenericDataloader(small, config, shuffle=config.shuffle)
+        del slices, segmentations, slices_small, seg_small
 
-            del slices, segmentations, slices_small, seg_small
-
-            return big_test_dl, small_test_dl
-
-        else:
-            return
-
-            slices = np.concatenate(slices, axis=0)
-            segmentations = np.concatenate(segmentations, axis=0)
-            non_zero_idx = np.sum(slices, axis=(1, 2, 3)) > 0
-
-            slices = slices[non_zero_idx]
-            segmentations = segmentations[non_zero_idx]
-
-            trainset = AnomalDataset([slices, segmentations], config)
-            test_dl = GenericDataloader(trainset, config, shuffle=config.shuffle)
-
-            return test_dl
+        return big_test_dl, small_test_dl

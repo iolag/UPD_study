@@ -1,12 +1,12 @@
-
+"""
+adapted from: https://github.com/tianyu0207/CCD/
+"""
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from augmentations import Cutout1, CutPerm, Rotation, Cutout, Gaussian_noise
 import torchvision.transforms as transforms
-import sys
-sys.path.append('/u/home/lagi/thesis')
-from DatasetPreprocessing.mri import get_camcan_slices
+from UPD_study.data.dataloaders.mri_preprocessing import get_camcan_slices
 
 
 class CCD_Dataset(Dataset):

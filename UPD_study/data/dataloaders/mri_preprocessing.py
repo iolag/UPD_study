@@ -1,6 +1,5 @@
 import os
 import sys
-sys.path.append('~/thesis/UAD_study/')
 from glob import glob
 from functools import partial
 from multiprocessing import Pool, cpu_count

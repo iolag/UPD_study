@@ -46,6 +46,7 @@ def get_config():
 
 config = get_config()
 
+# set initial script settings
 config.restoration = False
 config.method = 'VAE'
 misc_settings(config)

@@ -9,4 +9,4 @@ gdown https://drive.google.com/uc?id=1fJwdYVO8_lDeJI8ic1yr7sl5RtqYfxOW
 gdown https://drive.google.com/uc?id=1rrWddjsrmrwKQVCWU9x7onVkgMdtv0Wf
 gdown https://drive.google.com/uc?id=1RxRx_ImIDAmUp1h8BNaqVJ9LJ0jCmyua
 
-python ddr.py
+#python ddr.py

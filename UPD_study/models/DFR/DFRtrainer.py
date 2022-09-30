@@ -1,3 +1,6 @@
+"""
+adapted from https://github.com/YoungGod/DFR
+"""
 from argparse import ArgumentParser
 from time import time
 import numpy as np
@@ -8,6 +11,7 @@ from torch.nn import functional as F
 from dfr_utils import estimate_latent_channels
 import torch.nn as nn
 from scipy.ndimage import gaussian_filter
+from DFRmodel import Extractor, FeatureAE, _set_requires_grad_false
 from UPD_study.utilities.common_config import common_config
 from UPD_study.utilities.evaluate import evaluate
 from UPD_study.utilities.utils import (save_model, seed_everything,
@@ -42,6 +46,7 @@ def get_config():
     return parser.parse_args()
 
 
+# set initial script settings
 config = get_config()
 config.method = 'DFR'
 misc_settings(config)
@@ -62,9 +67,6 @@ if config.image_size == 256:
     config.stride = 4
 
 
-from DFRmodel import Extractor, FeatureAE, _set_requires_grad_false
-
-
 # if config.modality == 'CXR':
 #     config.latent_channels = 474
 # if config.modality == 'MRI' and config.sequence == 't2':
@@ -72,7 +74,6 @@ from DFRmodel import Extractor, FeatureAE, _set_requires_grad_false
 # if config.modality == 'MRI' and config.sequence == 't1':
 #     config.latent_channels = 191
 
-# this won't work with cfg.limited_metrics true
 if config.latent_channels is None:
     print('Estimating number of required latent channels')
 
@@ -119,7 +120,7 @@ if config.eval:
     print('Saved model loaded.')
 
 # Space Benchmark
-if config.speed_benchmark:
+if config.space_benchmark:
     from torchinfo import summary
     a = summary(model, (16, 3, 128, 128), verbose=0)
     params = a.total_params
@@ -251,9 +252,6 @@ def train() -> None:
 
             if config.step % config.anom_val_frequency == 0:
                 evaluate(config, small_testloader, val_step)
-
-            if config.step % config.save_frequency == 0:
-                save_model(model, config, config.step)
 
             if config.step >= config.max_steps:
                 save_model(model, config)

@@ -1,3 +1,6 @@
+"""
+adapted from: https://github.com/tianyu0207/CCD/
+"""
 import argparse
 import torch
 import numpy as np
@@ -103,8 +106,6 @@ if config.modality == 'COL':
     from UPD_study.models.CCD.datasets.COL_CCD import get_train_dataloader
 elif config.modality == 'MRI':
     from UPD_study.models.CCD.datasets.MRI_CCD import get_train_dataloader
-elif config.modality == 'CT':
-    from UPD_study.models.CCD.datasets.CT_CCD import get_train_dataloader
 elif config.modality == 'CXR':
     from UPD_study.models.CCD.datasets.CXR_CCD import get_train_dataloader
 elif config.modality == 'RF':

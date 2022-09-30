@@ -1,3 +1,6 @@
+"""
+adapted from: https://github.com/tianyu0207/CCD/
+"""
 import numpy as np
 import torch
 from PIL import Image
@@ -5,7 +8,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms as T
 from augmentations import CutPerm, Cutout1, Cutout, Gaussian_noise, Rotation
 import torchvision.transforms as transforms
-from Dataloaders.CXR import get_files
+from UPD_study.data.dataloaders.CXR import get_files
 
 
 class CCD_Dataset(Dataset):
