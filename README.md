@@ -79,4 +79,4 @@ To generate "The Effects of Limited Training Data" results from Fig. 3 run:
 bash experiments/percentage.sh
 ```
 
-!(figures/repo_samples.png)
+![A schematic illustration of Image-space (a) and Feature-space (b) methods. (Figure 1 from the paper)](figures/repo_samples.png)
