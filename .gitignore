@@ -34,5 +34,6 @@ Datasets/
 UPD_study/data/datasets/MRI/CamCAN/*
 UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData
 UPD_study/data/datasets/MRI/ATLAS/ATLAS_2
+UPD_study/data/datasets/RF/*
 new_experiment/
 main.sh
