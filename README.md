@@ -54,7 +54,7 @@ python UPD_study/data/data_preprocessing/prepare_data.py --dataset DDR
 
 ### MRI: CamCAN, ATLAS, BraTS 
 
-To download and preproc ATLAS and BraTS, run:
+To download and preprocess ATLAS and BraTS, run:
 
 ```bash
 bash UPD_study/data/data_preprocessing/download_ATLAS.sh
