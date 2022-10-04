@@ -48,7 +48,8 @@ To download CheXpert you must first register at https://stanfordmlgroup.github.i
 To download and prepare the DDR dataset, run:
 
 ```bash
-bash data/datasets/RF/ddr.sh
+bash UPD_study/data/data_preprocessing/download_DDR.sh
+python UPD_study/data/data_preprocessing/prepare_data.py --dataset DDR
 ```
 
 ### MRI: CamCAN, ATLAS, BraTS 
