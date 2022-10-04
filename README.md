@@ -54,42 +54,51 @@ python UPD_study/data/data_preprocessing/prepare_data.py --dataset DDR
 
 ### MRI: CamCAN, ATLAS, BraTS 
 
-To download and prepare the MRI datasets, run:
+To download and preproc ATLAS and BraTS, run:
 
 ```bash
-bash data/data_preprocessing/mri.sh
+bash UPD_study/data/data_preprocessing/download_ATLAS.sh
+bash UPD_study/data/data_preprocessing/download_BraTS.sh
+python UPD_study/data/data_preprocessing/prepare_data.py --dataset BraTS
+python UPD_study/data/data_preprocessing/prepare_data.py --dataset ATLAS
 ```
+To download the CamCAN data, you need to apply for it at https://camcan-archive.mrc-cbu.cam.ac.uk/dataaccess/index.php. After you download them, put them in data/datasets/MRI/CamCAN and run:
+
+```bash
+python UPD_study/data/data_preprocessing/prepare_data.py --dataset CamCAN
+```
+
 ## Experiments
 
 To generate the "Main Results" from Tables 1 and 3 over all three seeds run:
 ```bash
-bash experiments/main.sh 
+bash UPD_study/experiments/main.sh 
 ```
 Alternatively, for a single seed run:
 
 ```bash
-bash experiments/main_seed10.sh 
+bash UPD_study/experiments/main_seed10.sh 
 ```
 
 
 To generate the "Self-Supervised Pre-training" results from Tables 2 and 4 over all three seeds run:
 ```bash
-bash experiments/pretrained.sh
+bash UPD_study/experiments/pretrained.sh
 ```
 Alternatively, for a single seed run:
 
 ```bash
-bash experiments/pretrained_seed10.sh      
+bash UPD_study/experiments/pretrained_seed10.sh      
 ```
 
 To generate the "Complexity Analysis" results from Table 5 run:
 ```bash
-bash experiments/benchmarks.sh
+bash UPD_study/experiments/benchmarks.sh
 ```
 
 To generate "The Effects of Limited Training Data" results from Fig. 3 run:
 ```bash
-bash experiments/percentage.sh
+bash UPD_study/experiments/percentage.sh
 ```
 
 
