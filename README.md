@@ -48,8 +48,7 @@ To download CheXpert you must first register at https://stanfordmlgroup.github.i
 To download and prepare the DDR dataset, run:
 
 ```bash
-bash UPD_study/data/data_preprocessing/download_DDR.sh
-python UPD_study/data/data_preprocessing/prepare_data.py --dataset DDR
+bash UPD_study/data/data_preprocessing/prepare_DDR.sh
 ```
 
 ### MRI: CamCAN, ATLAS, BraTS 
@@ -57,10 +56,7 @@ python UPD_study/data/data_preprocessing/prepare_data.py --dataset DDR
 To download and preprocess ATLAS and BraTS, run:
 
 ```bash
-bash UPD_study/data/data_preprocessing/download_ATLAS.sh
-bash UPD_study/data/data_preprocessing/download_BraTS.sh
-python UPD_study/data/data_preprocessing/prepare_data.py --dataset BraTS
-python UPD_study/data/data_preprocessing/prepare_data.py --dataset ATLAS
+bash UPD_study/data/data_preprocessing/prepare_ATLAS_BraTS.sh
 ```
 To download the CamCAN data, you need to apply for it at https://camcan-archive.mrc-cbu.cam.ac.uk/dataaccess/index.php. After you download them, put them in data/datasets/MRI/CamCAN and run:
 

@@ -14,9 +14,13 @@ conda activate lagi
 # gdown https://drive.google.com/uc?id=1rrWddjsrmrwKQVCWU9x7onVkgMdtv0Wf
 # gdown https://drive.google.com/uc?id=1RxRx_ImIDAmUp1h8BNaqVJ9LJ0jCmyua
 
+# Download DDR
 gdown https://drive.google.com/drive/folders/1z6tSFmxW_aNayUqVxx6h6bY4kwGzUTEC --folder
 cat DDR-dataset.zip* > DDR-dataset.zip
 unzip DDR-dataset.zip -d UPD_study/data/datasets/RF/
 rm DDR-dataset.zip
 rm -r DDR-dataset.zip*
 mv 'UPD_study/data/datasets/RF/DDR-dataset/lesion_segmentation/valid/segmentation label' UPD_study/data/datasets/RF/DDR-dataset/lesion_segmentation/valid/label
+
+# Preprocess DDR
+python UPD_study/data/data_preprocessing/prepare_data.py --dataset DDR
