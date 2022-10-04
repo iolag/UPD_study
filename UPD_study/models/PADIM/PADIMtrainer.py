@@ -38,7 +38,7 @@ config = get_config()
 
 # set initial script settings
 config.method = 'PADIM'
-config.save_path = pathlib.Path(__file__).parents[0]
+config.model_dir_path = pathlib.Path(__file__).parents[0]
 config.disable_wandb = True
 misc_settings(config)
 
@@ -162,7 +162,7 @@ def train():
 
     # save learned distribution
     train_outputs = [mean, cov]
-    save_path = os.path.join(config.save_path, 'saved_models')
+    save_path = os.path.join(config.model_dir_path, 'saved_models')
     with open(f'{save_path}/{config.modality}/{config.arch}_{config.name}.pkl', 'wb') as f:
         pickle.dump(train_outputs, f)
 
@@ -192,7 +192,7 @@ def test(dataloader):
     c = model.layer3.register_forward_hook(hook)
 
     # load saved statistics
-    save_path = os.path.join(config.save_path, 'saved_models')
+    save_path = os.path.join(config.model_dir_path, 'saved_models')
     with open(f'{save_path}/{config.modality}/{config.arch}_{config.name}.pkl', 'rb') as f:
         train_outputs = pickle.load(f)
 

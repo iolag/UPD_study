@@ -96,6 +96,7 @@ class UNet(nn.Module):
         self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=1)
         #self.avgpool = nn.AdaptiveAvgPool2d((2, 2))
         # ccd extra fc layer
+        # if pretrain:
         self.fc = nn.Linear(512 * 16 * 16, 1024)
 
     def forward_down(self, x):

@@ -54,7 +54,7 @@ config = get_config()
 # set initial script settings
 config.restoration = False
 config.method = 'VAE'
-config.save_path = pathlib.Path(__file__).parents[0]
+config.model_dir_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
 # Specific modality params (Default are for MRI t2)

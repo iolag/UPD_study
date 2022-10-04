@@ -1,0 +1,21 @@
+<annotation>
+    <folder>OurDataset</folder>
+    <filename>007-3038-100.jpg</filename>
+    <size>
+        <width>2124</width>
+        <height>2056</height>
+        <depth>3</depth>
+    </size>
+    <object>
+        <name>ma</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1186</xmin>
+            <ymin>1195</ymin>
+            <xmax>1196</xmax>
+            <ymax>1208</ymax>
+        </bndbox>
+    </object>
+</annotation>

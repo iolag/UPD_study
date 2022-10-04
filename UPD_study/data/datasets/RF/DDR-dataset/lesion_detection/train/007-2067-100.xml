@@ -1,0 +1,33 @@
+<annotation>
+    <folder>OurDataset</folder>
+    <filename>007-2067-100.jpg</filename>
+    <size>
+        <width>2992</width>
+        <height>2000</height>
+        <depth>3</depth>
+    </size>
+    <object>
+        <name>ma</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>2121</xmin>
+            <ymin>285</ymin>
+            <xmax>2131</xmax>
+            <ymax>295</ymax>
+        </bndbox>
+    </object>
+    <object>
+        <name>ma</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>2121</xmin>
+            <ymin>285</ymin>
+            <xmax>2131</xmax>
+            <ymax>295</ymax>
+        </bndbox>
+    </object>
+</annotation>

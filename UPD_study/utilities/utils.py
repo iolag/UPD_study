@@ -14,7 +14,7 @@ os.environ["WANDB_SILENT"] = "true"
 import torchgeometry as tgm
 from torch import nn
 import torch
-import pathlib
+from UPD_study import ROOT
 from UPD_study.utilities.metrics import (
     compute_average_precision,
     compute_auroc,
@@ -38,13 +38,10 @@ def load_pretrained(model: nn.Module, config: Namespace) -> nn.Module:
         pretrained += f'_{config.sequence}'
     pretrained += f'_{config.name_add}_seed:{config.seed}'
 
-    # main directory path: '.../UPD_study/'
-    main_dir_path = pathlib.Path(__file__).parents[1]
-
     if config.arch == 'vae':
         # load encoder
         enc_dict = model.encoder.state_dict()
-        pretrained_dict = torch.load(os.path.join(main_dir_path,
+        pretrained_dict = torch.load(os.path.join(ROOT,
                                                   'models/CCD/saved_models',
                                                   config.modality,
                                                   f'{pretrained}_encoder_.pth'))
@@ -58,7 +55,7 @@ def load_pretrained(model: nn.Module, config: Namespace) -> nn.Module:
 
         # load bottleneck
         bn_dict = model.bottleneck.state_dict()
-        pretrained_dict = torch.load(os.path.join(main_dir_path,
+        pretrained_dict = torch.load(os.path.join(ROOT,
                                                   'models/CCD/saved_models',
                                                   config.modality,
                                                   f'{pretrained}_bottleneck_.pth'))
@@ -74,7 +71,7 @@ def load_pretrained(model: nn.Module, config: Namespace) -> nn.Module:
 
         # load pretrained weight dict
         model_dict = model.state_dict()
-        pretrained_dict = torch.load(os.path.join(main_dir_path,
+        pretrained_dict = torch.load(os.path.join(ROOT,
                                                   'models/CCD/saved_models',
                                                   config.modality,
                                                   f'{pretrained}_.pth'))
@@ -113,25 +110,25 @@ def save_model(model: Union[nn.Module, Dict[str, nn.Module]], config: Namespace)
         model: nn.Module instance or dict of nn.Module instances to be saved
         config (Namespace): configuration object.
     """
-    config.save_path = os.path.join(config.save_path, 'saved_models')
+    save_path = os.path.join(config.model_dir_path, 'saved_models')
     if config.method == 'RD':
         torch.save(model['decoder'].state_dict(),
-                   f'{config.save_path}/{config.modality}/{config.name}_dec_.pth')
+                   f'{save_path}/{config.modality}/{config.name}_dec_.pth')
         torch.save(model['bn'].state_dict(),
-                   f'{config.save_path}/{config.modality}/{config.name}_bn_.pth')
+                   f'{save_path}/{config.modality}/{config.name}_bn_.pth')
 
     elif config.method == 'CCD' and config.backbone_arch == 'vae':
         torch.save(model['encoder'].state_dict(),
-                   f'{config.save_path}/{config.modality}/{config.name}_encoder_.pth')
+                   f'{save_path}/{config.modality}/{config.name}_encoder_.pth')
         torch.save(model['bottleneck'].state_dict(),
-                   f'{config.save_path}/{config.modality}/{config.name}_bottleneck_.pth')
+                   f'{save_path}/{config.modality}/{config.name}_bottleneck_.pth')
     elif config.method == 'AMCons':
         torch.save(model['encoder'].state_dict(),
-                   f'{config.save_path}/{config.modality}/{config.name}_enc_.pth')
+                   f'{save_path}/{config.modality}/{config.name}_enc_.pth')
         torch.save(model['decoder'].state_dict(),
-                   f'{config.save_path}/{config.modality}/{config.name}_dec_.pth')
+                   f'{save_path}/{config.modality}/{config.name}_dec_.pth')
     else:
-        torch.save(model.state_dict(), f'{config.save_path}/{config.modality}/{config.name}_.pth')
+        torch.save(model.state_dict(), f'{save_path}/{config.modality}/{config.name}_.pth')
 
 
 def load_model(config: Namespace) -> Tuple[nn.Module, ...]:
@@ -144,18 +141,18 @@ def load_model(config: Namespace) -> Tuple[nn.Module, ...]:
         nn.Module model instances for every method, loaded with saved weights
     """
 
-    config.save_path = os.path.join(config.save_path, 'saved_models')
+    save_path = os.path.join(config.model_dir_path, 'saved_models')
 
     if config.method == 'RD':
 
-        load_dec = torch.load(f'{config.save_path}/{config.modality}/{config.name}_dec_.pth')
-        load_bn = torch.load(f'{config.save_path}/{config.modality}/{config.name}_bn_.pth')
+        load_dec = torch.load(f'{save_path}/{config.modality}/{config.name}_dec_.pth')
+        load_bn = torch.load(f'{save_path}/{config.modality}/{config.name}_bn_.pth')
         return load_dec, load_bn
 
     elif config.method == 'AMCons':
 
-        load_enc = torch.load(f'{config.save_path}/{config.modality}/{config.name}_enc_.pth')
-        load_dec = torch.load(f'{config.save_path}/{config.modality}/{config.name}_dec_.pth')
+        load_enc = torch.load(f'{save_path}/{config.modality}/{config.name}_enc_.pth')
+        load_dec = torch.load(f'{save_path}/{config.modality}/{config.name}_dec_.pth')
         return load_enc, load_dec
 
     elif config.method == 'f-anoGAN':
@@ -167,15 +164,15 @@ def load_model(config: Namespace) -> Tuple[nn.Module, ...]:
             generator_name = f'f-anoGAN_{config.modality}_{config.sequence}__seed:10_netG.pth'
             discriminator_name = f'f-anoGAN_{config.modality}_{config.sequence}__seed:10_netD.pth'
 
-        load_g = torch.load(os.path.join(config.save_path,
+        load_g = torch.load(os.path.join(save_path,
                                          config.modality,
                                          generator_name))
 
-        load_d = torch.load(os.path.join(config.save_path,
+        load_d = torch.load(os.path.join(save_path,
                                          config.modality,
                                          discriminator_name))
         if config.eval:
-            load_e = torch.load(f'{config.save_path}/{config.modality}/{config.name}_netE.pth')
+            load_e = torch.load(f'{save_path}/{config.modality}/{config.name}_netE.pth')
             return load_g, load_d, load_e
 
         # for the 2 run scenario where wgan is already trained and we want to train encoder
@@ -183,7 +180,7 @@ def load_model(config: Namespace) -> Tuple[nn.Module, ...]:
             return load_g, load_d
 
     else:
-        return torch.load(f'{config.save_path}/{config.modality}/{config.name}_.pth')
+        return torch.load(f'{save_path}/{config.modality}/{config.name}_.pth')
 
 
 def misc_settings(config: Namespace) -> None:
@@ -203,7 +200,7 @@ def misc_settings(config: Namespace) -> None:
     assert (config.normal_split > 0.0), msg
     assert (config.normal_split < 1.0), msg
 
-    config.datasets_dir = os.path.join(os.path.expanduser('~/thesis/UAD_study/'), config.datasets_dir)
+    config.datasets_dir = os.path.join(ROOT, 'data/datasets')
 
     # Select training device
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -238,6 +235,8 @@ def misc_settings(config: Namespace) -> None:
 
     if config.percentage != 100:
         config.no_dice = True
+        if config.sequence == 't1' and not config.brats_t1:
+            config.seed = 20
         if config.percentage == -1:
             name += '_percentage:single_sample'
         else:
@@ -246,7 +245,7 @@ def misc_settings(config: Namespace) -> None:
     name += f'_{config.name_add}_seed:{config.seed}'
 
     # create saved_models folder
-    os.makedirs(f'{config.save_path}/{config.modality}', exist_ok=True)
+    os.makedirs(f'{config.model_dir_path}/saved_models/{config.modality}', exist_ok=True)
 
     # init wandb logger
     wandb_name = name
@@ -461,7 +460,7 @@ def load_data(config: Namespace) -> Tuple[DataLoader, ...]:
     temp = config.batch_size
 
     # DFR cannot handle large batch size due to memory requirements, hence keep original batch size
-    if config.method != 'DFR':
+    if config.method != 'DFR' and not config.restoration:
         config.batch_size = config.num_images_log
 
     big_testloader, small_testloader = get_dataloaders(config, train=False)

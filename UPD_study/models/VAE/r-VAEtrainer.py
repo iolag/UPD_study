@@ -25,7 +25,7 @@ def get_config():
     parser = ArgumentParser()
     parser = common_config(parser)
 
-    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
+    parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
     parser.add_argument('--num_restoration_steps', type=int, default=500, help='Number of restoration steps.')
     parser.add_argument('--restore_lr', type=float, default=1e3, help='Restoration learning rate.')
     parser.add_argument('--tv_lambda', type=float, default=-1, help='Total variation weight, lambda.')
@@ -49,7 +49,7 @@ config = get_config()
 # set initial script settings
 config.restoration = True
 config.method = 'VAE'
-config.save_path = pathlib.Path(__file__).parents[0]
+config.model_dir_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
 

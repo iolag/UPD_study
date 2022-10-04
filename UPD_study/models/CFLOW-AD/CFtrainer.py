@@ -80,7 +80,7 @@ config.clamp_alpha = 1.9  # see paper equation 2 for explanation
 config.condition_vec = 128
 
 # set initial script settings
-config.save_path = pathlib.Path(__file__).parents[0]
+config.model_dir_path = pathlib.Path(__file__).parents[0]
 config.method = 'CFLOW-AD'
 misc_settings(config)
 
@@ -124,7 +124,7 @@ for i in range(1, config.num_pool_layers):
 optimizer = torch.optim.Adam(params, lr=config.lr)
 
 if config.eval:
-    save_path = os.path.join(config.save_path, 'saved_models')
+    save_path = os.path.join(config.model_dir_path, 'saved_models')
     [decoder.load_state_dict(torch.load(f'{save_path}/{config.modality}/{config.name}_decoder_{i}.pth'))
      for i, decoder in enumerate(decoders)]
 

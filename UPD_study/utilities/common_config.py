@@ -2,7 +2,8 @@ from UPD_study.utilities.utils import str_to_bool
 
 
 def common_config(parser):
-
+    parser.add_argument('--test', '-asd', type=str_to_bool, default=False,
+                        help='% of samples to use for % experiment, defaults to 100 for no experiment')
     parser.add_argument('--percentage', '-pc', type=int, default=100,
                         help='% of samples to use for % experiment, defaults to 100 for no experiment')
     parser.add_argument('--shuffle', '-sh', type=str_to_bool, default=False,
@@ -25,9 +26,9 @@ def common_config(parser):
     parser.add_argument('--eval', '-ev', type=str_to_bool, default=False, help='Evaluation mode')
     parser.add_argument('--no_dice', type=str_to_bool, default=False,
                         help='do not calculate dice (used to save inference time)')
+    parser.add_argument('--restoration', '-res', type=str_to_bool, default=False,
+                        help='VAE restoration')
     # Data settings
-    parser.add_argument('--datasets_dir', type=str,
-                        default='Datasets', help='datasets_dir')
     parser.add_argument('--image_size', type=int, default=128, help='Image size')
     parser.add_argument('--img_channels', type=int, default=1, help='Image channels')
     parser.add_argument('--center', '-cnt', type=str_to_bool, default=False,

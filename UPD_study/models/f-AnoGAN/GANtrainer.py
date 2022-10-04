@@ -66,7 +66,7 @@ if config.modality == 'MRI':
 
 # set initial script settings
 config.method = 'f-anoGAN'
-config.save_path = pathlib.Path(__file__).parents[0]
+config.model_dir_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
@@ -294,7 +294,7 @@ def train_gan():
                 validate_gan()
 
             if config.step >= config.max_steps_gan:
-                save_path = os.path.join(config.save_path, 'saved_models')
+                save_path = os.path.join(config.model_dir_path, 'saved_models')
                 print(
                     f'Reached {config.max_steps_gan} iterations. Finished training GAN.')
                 torch.save(model.D.state_dict(), f'{save_path}/{config.modality}/{config.name}_netD.pth')
@@ -383,7 +383,7 @@ def train_encoder():
                 evaluate(config, small_testloader, val_step_encoder)
 
             if config.step >= config.max_steps_encoder:
-                save_path = os.path.join(config.save_path, 'saved_models')
+                save_path = os.path.join(config.model_dir_path, 'saved_models')
                 print(f'Reached {config.max_steps_encoder} iterations. Finished training encoder.')
                 torch.save(model.E.state_dict(), f'{save_path}/{config.modality}/{config.name}_netE.pth')
                 return

@@ -1,0 +1,21 @@
+<annotation>
+    <folder>OurDataset</folder>
+    <filename>20170502204843387.jpg</filename>
+    <size>
+        <width>5184</width>
+        <height>3456</height>
+        <depth>3</depth>
+    </size>
+    <object>
+        <name>he</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>2025</xmin>
+            <ymin>439</ymin>
+            <xmax>2101</xmax>
+            <ymax>485</ymax>
+        </bndbox>
+    </object>
+</annotation>

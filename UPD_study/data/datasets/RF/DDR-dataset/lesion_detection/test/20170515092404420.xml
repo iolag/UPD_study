@@ -1,0 +1,33 @@
+<annotation>
+    <folder>OurDataset</folder>
+    <filename>20170515092404420.jpg</filename>
+    <size>
+        <width>2304</width>
+        <height>1728</height>
+        <depth>3</depth>
+    </size>
+    <object>
+        <name>he</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>959</xmin>
+            <ymin>757</ymin>
+            <xmax>980</xmax>
+            <ymax>767</ymax>
+        </bndbox>
+    </object>
+    <object>
+        <name>he</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1272</xmin>
+            <ymin>670</ymin>
+            <xmax>1317</xmax>
+            <ymax>687</ymax>
+        </bndbox>
+    </object>
+</annotation>

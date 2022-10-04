@@ -45,7 +45,7 @@ def get_config():
 # set initial script settings
 config = get_config()
 config.method = 'DAE'
-config.save_path = pathlib.Path(__file__).parents[0]
+config.model_dir_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
@@ -60,7 +60,7 @@ train_loader, val_loader, big_testloader, small_testloader = load_data(config)
 seed_everything(config.seed)
 
 print("Initializing model...")
-model = UNet(in_channels=3, n_classes=config.img_channels).to(config.device)
+model = UNet(in_channels=3, n_classes=config.img_channels, pretrain=config.load_pretrained).to(config.device)
 
 # Load pretrained encoder
 if config.load_pretrained and not config.eval:

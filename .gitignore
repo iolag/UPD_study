@@ -31,4 +31,8 @@ Recycle Bin/
 histogram stuff/
 Datasets/
 .UPD_study.egg-info/
-/u/home/lagi/thesis/UAD_study/Datasets/MRI
+UPD_study/data/datasets/MRI/CamCAN/*
+UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData
+UPD_study/data/datasets/MRI/ATLAS/ATLAS_2
+new_experiment/
+main.sh

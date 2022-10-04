@@ -50,7 +50,7 @@ def get_config():
 # set initial script settings
 config = get_config()
 config.method = 'FAE'
-config.save_path = pathlib.Path(__file__).parents[0]
+config.model_dir_path = pathlib.Path(__file__).parents[0]
 config.center = True
 misc_settings(config)
 

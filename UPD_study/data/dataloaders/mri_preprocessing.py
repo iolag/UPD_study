@@ -1,5 +1,4 @@
 import os
-import sys
 from glob import glob
 from functools import partial
 from multiprocessing import Pool, cpu_count
@@ -8,39 +7,51 @@ import nibabel as nib
 import numpy as np
 from skimage.exposure import equalize_hist
 from skimage.transform import resize
+from UPD_study import ROOT
 
 
-def get_camcan_files(cf) -> List[str]:
-
-    path = os.path.join(sys.path[-1], cf.datasets_dir, 'MRI/CamCAN')
+def get_camcan_files(config) -> List[str]:
+    """Get all CamCAN file paths in a given sequence (t1, t2, or flair).
+    Args:
+        config (Namespace): configuration object
+    Returns:
+        files (List[str]): List of files
+    """
+    path = os.path.join(ROOT, 'data', 'datasets', 'MRI/CamCAN')
     files = glob(os.path.join(path, '*/',
-                              f'*{cf.sequence.upper()}w_stripped_registered.nii.gz'))
+                              f'*{config.sequence.upper()}w_stripped_registered.*'))
 
     assert len(files) > 0, "No files found in CamCAN"
     return files
 
 
-def get_brats_files(cf) -> Tuple[List[str], List[str]]:
-    """Get all BRATS files in a given sequence (t1, t2, or flair).
+def get_brats_files(config) -> Tuple[List[str], List[str]]:
+    """Get all BraTS file paths in a given sequence (t1, t2, or flair).
     Args:
-        path (str): Path to BRATS root directory
-        sequence (str): One of "t1", "t2", or "flair"
+        config (Namespace): configuration object
     Returns:
         files (List[str]): List of files
         seg_files (List[str]): List of segmentation files
     """
-    files = glob(os.path.join(sys.path[-1], cf.datasets_dir, 'MRI/BraTS/MICCAI_BraTS2020_TrainingData/*',
-                              f'*{cf.sequence.lower()}*registered.nii.gz'))
-    seg_files = [os.path.join(os.path.dirname(f), 'anomaly_segmentation.nii.gz') for f in files]
+    # pt = '/u/home/lagi/thesis/UAD_study/Datasets'
+    files = glob(os.path.join(ROOT, 'data', 'datasets', 'MRI/BraTS/MICCAI_BraTS2020_TrainingData/*',
+                              f'*{config.sequence.lower()}*registered.*'))
+
+    seg_files = [os.path.join(os.path.dirname(f), 'anomaly_segmentation.nii') for f in files]
     assert len(files) > 0, "No files found in BraTS"
     return files, seg_files
 
 
 def get_atlas_files(cf) -> List[str]:
-
-    path = os.path.join(sys.path[-1], cf.datasets_dir, 'MRI/ATLAS/lesion')
-    files = glob(os.path.join(path, '*/t01/',
-                              f'*{cf.sequence.lower()}w_deface_stx_stripped_registered.nii.gz'))
+    """Get all ATLAS file paths
+    Args:
+        config (Namespace): configuration object
+    Returns:
+        files (List[str]): List of files
+        seg_files (List[str]): List of segmentation files
+    """
+    path = os.path.join(ROOT, 'data', 'datasets', 'MRI/ATLAS/ATLAS_2/Training')
+    files = sorted(glob(os.path.join(path, '*/*/*/*/*stripped_registered*')))
     seg_files = [os.path.join(os.path.dirname(f), 'anomaly_segmentation.nii.gz') for f in files]
     assert len(files) > 0, "No files found in ATLAS"
     return files, seg_files
@@ -86,25 +97,25 @@ def load_nii_nn(path: str, size: int,
                 slice_range: Tuple[int, int] = None,
                 normalize: bool = False,
                 equalize_histogram: bool = False,
-                dtype: str = "float32"):
+                dtype: str = "float32", segm=False):
     """
     Load a file for training. Slices should be first dimension, volumes are in
     MNI space and center cropped to the shorter side, then resized to size
     """
     vol = load_nii(path, primary_axis=2, dtype=dtype)[0]
-
+    # if segm:
+    #     print(np.unique(vol // 1))
+    # select specified range of slices
     if slice_range is not None:
         vol = vol[slice_range[0]:slice_range[1]]
 
     vol = rectangularize(vol)
 
-    # clear interpolation artifacts for atlas imgs
-
+    # fix interpolation artifacts
     if is_atlas is not None or is_atlas:
         vol[vol < 1e-1] = 0
-
-    # clear general interpolation artifacts
-    vol[vol < 1e-4] = 0
+    else:
+        vol[vol < 1e-4] = 0
 
     if size is not None:
         vol = resize(vol, [vol.shape[0], size, size])
@@ -113,9 +124,10 @@ def load_nii_nn(path: str, size: int,
     if normalize:
         vol = normalize_percentile(vol, 99)
 
-    # Scale to 0,1
-    if vol.max() > 0.:
-        vol /= vol.max()
+    # If not segmentation mask, scale to [0,1]
+    if not segm:
+        if vol.max() > 0.:
+            vol /= vol.max()
 
     # histogram equilization
     if equalize_histogram:
@@ -129,7 +141,8 @@ def load_segmentation(path: str, size: int,
                       threshold: float = 0.4):
     """Load a segmentation file"""
     vol = load_nii_nn(path, size=size, slice_range=slice_range,
-                      normalize=False, equalize_histogram=False)
+                      normalize=False, equalize_histogram=False, segm=True)
+
     return np.where(vol > threshold, 1, 0)
 
 
