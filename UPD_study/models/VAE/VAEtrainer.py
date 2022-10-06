@@ -157,14 +157,14 @@ def vae_val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
                 anomaly_map[i] = gaussian_filter(anomaly_map[i], sigma=config.sigma)
             anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
 
-    # for MRI, RF apply brainmask
-    if config.modality in ['MRI', 'MRInoram', 'CT']:
+    # for MRI apply brainmask
+    if config.modality == 'MRI':
         mask = torch.stack([inp[0].unsqueeze(0) > inp[0].min() for inp in input])
         anomaly_map *= mask
         anomaly_score = torch.tensor([map[inp[0].unsqueeze(0) > inp[0].min()].max()
                                      for map, inp in zip(anomaly_map, input)])
 
-    elif config.modality in ['RF'] and config.dataset == 'DDR':
+    elif config.modality == 'RF':
         anomaly_score = torch.tensor([map.max() for map in anomaly_map])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])

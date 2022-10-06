@@ -25,7 +25,7 @@ def get_config():
     parser = ArgumentParser()
     parser = common_config(parser)
 
-    parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
+    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--num_restoration_steps', type=int, default=500, help='Number of restoration steps.')
     parser.add_argument('--restore_lr', type=float, default=1e3, help='Restoration learning rate.')
     parser.add_argument('--tv_lambda', type=float, default=-1, help='Total variation weight, lambda.')
@@ -49,6 +49,9 @@ config = get_config()
 # set initial script settings
 config.restoration = True
 config.method = 'VAE'
+if config.tv_lambda < 0:
+    # to calculate tv_lambda set config.eval = False in order to return normal validation set
+    config.eval = False
 config.model_dir_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
 
@@ -207,7 +210,7 @@ def restoration_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
         input_recon *= mask
         anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
 
-    elif config.modality == 'DDR':
+    elif config.modality == 'RF':
         anomaly_score = torch.tensor([map.max() for map in anomaly_map])
     else:
         anomaly_score = torch.tensor([map.mean() for map in anomaly_map])

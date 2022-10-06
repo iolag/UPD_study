@@ -115,7 +115,7 @@ def val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
         loss_dict = model.loss(input)
         anomaly_map = model.predict_anomaly(input)
 
-    # for MRI, RF apply brainmask
+    # for MRI apply brainmask
     if config.modality == 'MRI':
         mask = torch.stack([inp > inp.min() for inp in input])
         anomaly_map *= mask

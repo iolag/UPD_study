@@ -460,6 +460,7 @@ def load_data(config: Namespace) -> Tuple[DataLoader, ...]:
     temp = config.batch_size
 
     # DFR cannot handle large batch size due to memory requirements, hence keep original batch size
+    # also r-vae's results are batch_size dependent
     if config.method != 'DFR' and not config.restoration:
         config.batch_size = config.num_images_log
 

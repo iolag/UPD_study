@@ -15,36 +15,28 @@ from typing import List, Tuple
 
 class NormalDataset(Dataset):
     """
-    Dataset class for the Healthy datasets.
+    Dataset class for the Healthy MRI datasets.
     """
 
     def __init__(self, files: np.ndarray, config: Namespace):
         """
         Args:
+           files(nd.array): array of MRI slices with shape [slices,1,H,W]
             config(Namespace): config object
-
-        config should include "sequence" and any MRI preprocessing options (eg. config.normalize)
         """
 
-        '''
-        load each input and one random second image
-        img1 : input images
-        img2 : randomly sampled second images
-
-        images need to be converted to ndarrays with shape CxHxW for the pii function input
-        '''
         self.files = files
         self.center = config.center
 
     def __len__(self):
         return len(self.files)
 
-    # def __getitem__(self, idx):
-
     def __getitem__(self, idx):
 
         img = self.files[idx]
+        # index of second image
         idx2 = np.random.randint(0, len(self))
+        # create artificial anomaly image and ground truth mask
         img, mask = pii(img, self.files[idx2], is_mri=True)
         mask = torch.FloatTensor(mask)
         img = torch.FloatTensor(img)

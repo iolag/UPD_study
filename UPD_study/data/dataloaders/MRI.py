@@ -18,8 +18,7 @@ class NormalDataset(Dataset):
     def __init__(self, files: np.ndarray, config: Namespace):
         """
         Args:
-            files(nd.array): array of shape [slices,1,H,W] already loaded
-                             to ram with get_camcan_slices()
+            files(nd.array): array of MRI slices with shape [slices,1,H,W]
             config(Namespace): config object
         """
 
@@ -44,7 +43,7 @@ class AnomalDataset(Dataset):
     Dataset class for the BraTS and ATLAS datasets.
     """
 
-    def __init__(self, files: List, config: Namespace):
+    def __init__(self, files: List[np.ndarray], config: Namespace):
         """
         Args:
             files(List[np.ndarray, np.ndarray]): list of two arrays

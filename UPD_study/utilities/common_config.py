@@ -8,7 +8,6 @@ def common_config(parser):
                         help='% of samples to use for % experiment, defaults to 100 for no experiment')
     parser.add_argument('--shuffle', '-sh', type=str_to_bool, default=False,
                         help='shuffle test set (after splitting)')
-    parser.add_argument('--deep', '-dp', type=str_to_bool, default=False, help='')
     parser.add_argument('--speed_benchmark', '-speed', type=str_to_bool,
                         default=False, help='Excecute speed benchmark')
     parser.add_argument('--space_benchmark', '-space', type=str_to_bool,
@@ -51,9 +50,7 @@ def common_config(parser):
                         help='Normalize images to 98th percentile and scale to [0,1]')
     parser.add_argument('--equalize_histogram', type=str_to_bool,
                         default=False, help='Equalize histogram')
-    parser.add_argument('--histogram_matching', '-match', type=str_to_bool,
 
-                        default=False, help='Match histogram with a reference slice.')
     # CXR specific settings
     parser.add_argument('--sup_devices', type=str_to_bool, default=False,
                         help='Whether to include CXRs with support devices')
