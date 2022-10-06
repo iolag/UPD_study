@@ -25,7 +25,7 @@ def get_config():
     parser = ArgumentParser()
     parser = common_config(parser)
 
-    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
+    parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
     parser.add_argument('--num_restoration_steps', type=int, default=500, help='Number of restoration steps.')
     parser.add_argument('--restore_lr', type=float, default=1e3, help='Restoration learning rate.')
     parser.add_argument('--tv_lambda', type=float, default=-1, help='Total variation weight, lambda.')
@@ -49,12 +49,10 @@ config = get_config()
 # set initial script settings
 config.restoration = True
 config.method = 'VAE'
-if config.tv_lambda < 0:
-    # to calculate tv_lambda set config.eval = False in order to return normal validation set
-    config.eval = False
+config.eval = True
+
 config.model_dir_path = pathlib.Path(__file__).parents[0]
 misc_settings(config)
-
 
 # Specific modality params (Default are for MRI t2)
 if config.modality != 'MRI':
@@ -95,6 +93,10 @@ if config.modality == 'RF':
 
 # specific seed for creating the dataloader
 seed_everything(42)
+
+if config.tv_lambda < 0:
+    # to calculate tv_lambda set config.eval = False in order to return normal validation set
+    config.eval = False
 
 train_loader, val_loader, big_testloader, small_testloader = load_data(config)
 

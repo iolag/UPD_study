@@ -28,11 +28,11 @@ def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, 
     """
 
     norm_paths = sorted(
-        glob(os.path.join(config.datasets_dir, 'DDR', 'healthy', '*.jpg')))
+        glob(os.path.join(config.datasets_dir, 'RF', 'DDR-dataset', 'healthy', '*.jpg')))
     anom_paths = sorted(glob(os.path.join(config.datasets_dir,
-                        'DDR', 'unhealthy', 'images', '*.png')))
+                                          'RF', 'DDR-dataset', 'unhealthy', 'images', '*.png')))
 
-    segmentations = sorted(glob(os.path.join(config.datasets_dir, 'DDR',
+    segmentations = sorted(glob(os.path.join(config.datasets_dir, 'RF', 'DDR-dataset',
                                              'unhealthy', 'segmentations', '*.png')))
     if train:
         return norm_paths[757:]

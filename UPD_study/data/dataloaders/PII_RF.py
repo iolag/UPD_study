@@ -2,7 +2,7 @@ import sys
 sys.path.append('~/thesis/UAD_study/')
 from glob import glob
 import os
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
@@ -17,9 +17,11 @@ from multiprocessing import Pool, cpu_count
 from functools import partial
 
 
-def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List]:
+def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, ...]]:
     """
-    Return a list of all the paths of normal files.
+
+    tran == True: Return a list of  paths of normal samples.
+    train == False:  Return a list of  paths of normal samples.
 
     Args:
         config (Namespace): configuration object
@@ -33,7 +35,7 @@ def get_files(config: Namespace, train: bool = True) -> List or Tuple[List, List
     norm_paths = sorted(
         glob(os.path.join(config.datasets_dir, 'DDR-dataset', 'healthy', '*.jpg')))
     anom_paths = sorted(glob(os.path.join(config.datasets_dir,
-                        'DDR-dataset', 'unhealthy', 'images', '*.png')))
+                        'DDR', 'unhealthy', 'images', '*.png')))
 
     segmentations = sorted(glob(os.path.join(config.datasets_dir, 'DDR-dataset',
                                              'unhealthy', 'segmentations', '*.png')))
