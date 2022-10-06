@@ -226,11 +226,10 @@ def misc_settings(config: Namespace) -> None:
 
     if config.load_pretrained:
         name += '_CCD'
+
     if config.modality == 'RF':
         config.img_channels = 3
-
-    elif config.modality == 'RF' and config.method != 'f-anoGAN':
-        if config.method != 'AMCons':
+        if config.method not in ['f-anoGAN', 'AMCons']:
             config.center = True
 
     if config.percentage != 100:
