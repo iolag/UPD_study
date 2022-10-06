@@ -9,6 +9,7 @@ f-AnoGAN/generated
 **/*.pth
 **/*.pt
 **/*.jpg
+**/*.nii.*
 model_ckps/
 saved_models/
 pretrained_models/
@@ -24,10 +25,10 @@ Recycle Bin/
 histogram stuff/
 Datasets/
 .UPD_study.egg-info/
+UPD_study/data/datasets/MRI/ATLAS/*
+UPD_study/data/datasets/MRI/BraTS/*
 UPD_study/data/datasets/MRI/CamCAN/*
-UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData/
-UPD_study/data/datasets/MRI/ATLAS/ATLAS_2/
-UPD_study/data/datasets/RF/DDR-dataset/
+
 image_vs_feature/
 main.sh
 t.sh
