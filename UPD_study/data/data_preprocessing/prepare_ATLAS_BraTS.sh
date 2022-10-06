@@ -1,6 +1,6 @@
-# Activate the virtual environment
-source /opt/anaconda3/etc/profile.d/conda.sh
-conda activate lagi
+# # Activate the virtual environment
+# source /opt/anaconda3/etc/profile.d/conda.sh
+# conda activate lagi
 
 #Download ATLAS
 get https://fcon_1000.projects.nitrc.org/indi/retro/ATLAS/releases/R2.0/ATLAS_R2.0_encrypted.tar.gz

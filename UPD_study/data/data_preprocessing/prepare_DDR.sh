@@ -1,6 +1,6 @@
-# Activate the virtual environment
-source /opt/anaconda3/etc/profile.d/conda.sh
-conda activate lagi
+# # Activate the virtual environment
+# source /opt/anaconda3/etc/profile.d/conda.sh
+# conda activate lagi
 
 
 # gdown https://drive.google.com/uc?id=1_gmRXJ3Wc9lNScbAlC3Jt1zOwpFHfDgE
