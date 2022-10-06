@@ -61,7 +61,7 @@ bash UPD_study/data/data_preprocessing/prepare_BraTS.sh
 ```
 For ATLAS you need to apply for the data at https://fcon_1000.projects.nitrc.org/indi/retro/atlas.htm and receive the encryption password. During the run of prepare_ATLAS.sh you will be prompted to input the password.
 
-For BraTS, Kaggle's API will be used to download the data. To setup your machine to interact with the API, follow the instructions at https://www.kaggle.com/docs/api.
+For BraTS, Kaggle's API will be used to download the data. To be able to interact with the API, follow the instructions at https://www.kaggle.com/docs/api.
 
 To download the CamCAN data, you need to apply for it at https://camcan-archive.mrc-cbu.cam.ac.uk/dataaccess/index.php. After you download them, put them in data/datasets/MRI/CamCAN and run:
 
