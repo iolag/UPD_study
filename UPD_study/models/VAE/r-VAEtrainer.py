@@ -93,12 +93,14 @@ if config.modality == 'RF':
 
 # specific seed for creating the dataloader
 seed_everything(42)
+_, _, big_testloader, small_testloader = load_data(config)
 
 if config.tv_lambda < 0:
-    # to calculate tv_lambda set config.eval = False in order to return normal validation set
+    # to calculate tv_lambda set config.eval = False and get normal validation set
     config.eval = False
 
-train_loader, val_loader, big_testloader, small_testloader = load_data(config)
+seed_everything(42)
+_, val_loader, _, _ = load_data(config)
 
 """"""""""""""""""""""""""""""""" Init model """""""""""""""""""""""""""""""""
 # Reproducibility
