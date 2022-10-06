@@ -24,9 +24,6 @@ backup/
 Recycle Bin/
 histogram stuff/
 .UPD_study.egg-info/
-UPD_study/data/datasets/MRI/BraTS/**
-UPD_study/data/datasets/MRI/CamCAN/**
-UPD_study/data/datasets/RF/DDR-dataset/
 image_vs_feature/
 main.sh
 t.sh
