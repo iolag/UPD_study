@@ -32,3 +32,4 @@ UPD_study/data/datasets/RF/*
 image_vs_feature/
 main.sh
 t.sh
+CheXpert-v1.0-small
