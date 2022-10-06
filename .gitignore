@@ -1,23 +1,16 @@
 Datasets/
 other stuff/
 __pycache__/
-brain_train/
 wandb/
-natural-synthetic-anomalies-main/
 studies/
 saved_runs/
 f-AnoGAN/*.pth
 f-AnoGAN/generated
 **/*.pth
 **/*.pt
-Dataloaders/old/
 **/*.jpg
 model_ckps/
-felix/
-paper/
-old/
 saved_models/
-random/
 pretrained_models/
 saved_statistics/
 saved_statistics/
@@ -32,9 +25,9 @@ histogram stuff/
 Datasets/
 .UPD_study.egg-info/
 UPD_study/data/datasets/MRI/CamCAN/*
-UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData
-UPD_study/data/datasets/MRI/ATLAS/ATLAS_2
-UPD_study/data/datasets/RF/DDR-dataset
+UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData/
+UPD_study/data/datasets/MRI/ATLAS/ATLAS_2/
+UPD_study/data/datasets/RF/DDR-dataset/
 image_vs_feature/
 main.sh
 t.sh
