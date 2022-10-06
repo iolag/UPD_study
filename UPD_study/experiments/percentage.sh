@@ -1,6 +1,6 @@
-# Activate the virtual environment
-source /opt/anaconda3/etc/profile.d/conda.sh
-conda activate lagi
+# # Activate the virtual environment
+# source /opt/anaconda3/etc/profile.d/conda.sh
+# conda activate upd
 
 # 
 
