@@ -28,7 +28,7 @@ Datasets/
 UPD_study/data/datasets/MRI/ATLAS/*
 UPD_study/data/datasets/MRI/BraTS/*
 UPD_study/data/datasets/MRI/CamCAN/*
-
+UPD_study/data/datasets/RF/*
 image_vs_feature/
 main.sh
 t.sh
