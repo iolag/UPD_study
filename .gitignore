@@ -23,7 +23,6 @@ old_repo/
 backup/
 Recycle Bin/
 histogram stuff/
-Datasets/
 .UPD_study.egg-info/
 UPD_study/data/datasets/MRI/ATLAS/**
 UPD_study/data/datasets/MRI/BraTS/**
