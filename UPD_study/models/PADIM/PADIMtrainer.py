@@ -49,7 +49,7 @@ if config.eval:
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
 # PaDiM cannot handle more than 20% of CamCAN samples in our machine
 if config.modality == 'MRI' and not config.eval:
-    config.normal_split = 0.2
+    config.normal_split = 0.18
 
 # specific seed for creating the dataloader
 seed_everything(42)

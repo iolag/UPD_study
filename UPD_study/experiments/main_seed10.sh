@@ -56,11 +56,11 @@ python UPD_study/models/DAE/DAEtrainer.py -ev t -mod MRI
 python UPD_study/models/DFR/DFRtrainer.py -ev t -mod MRI  
 python UPD_study/models/FAE/FAEtrainer.py -ev t -mod MRI  
 python UPD_study/models/f-AnoGAN/GANtrainer.py -ev t -mod MRI  
-python UPD_study/models/PADIM/PADIMtrainer.py -ev t -mod MRI  
+#python UPD_study/models/PADIM/PADIMtrainer.py -ev t -mod MRI  
 python UPD_study/models/PII/PIItrainer.py -ev t -mod MRI  
 python UPD_study/models/RD/RDtrainer.py -ev t -mod MRI  
 python UPD_study/models/VAE/VAEtrainer.py -ev t -mod MRI  
-python UPD_study/models/VAE/r-VAEtrainer.py -ev t -mod MRI 
+#python UPD_study/models/VAE/r-VAEtrainer.py -ev t -mod MRI 
 
 python UPD_study/models/AMCons/AMCtrainer.py -ev t -mod MRI -seq t1 
 python UPD_study/models/CFLOW-AD/CFtrainer.py -ev t -mod MRI -seq t1  
@@ -68,11 +68,11 @@ python UPD_study/models/DAE/DAEtrainer.py -ev t -mod MRI -seq t1
 python UPD_study/models/DFR/DFRtrainer.py -ev t -mod MRI -seq t1  
 python UPD_study/models/FAE/FAEtrainer.py -ev t -mod MRI -seq t1  
 python UPD_study/models/f-AnoGAN/GANtrainer.py -ev t -mod MRI -seq t1  
-python UPD_study/models/PADIM/PADIMtrainer.py -ev t -mod MRI -seq t1  
+#python UPD_study/models/PADIM/PADIMtrainer.py -ev t -mod MRI -seq t1  
 python UPD_study/models/PII/PIItrainer.py -ev t -mod MRI -seq t1  
 python UPD_study/models/RD/RDtrainer.py -ev t -mod MRI -seq t1  
 python UPD_study/models/VAE/VAEtrainer.py -ev t -mod MRI -seq t1
-python UPD_study/models/VAE/r-VAEtrainer.py -ev t -mod MRI -seq t1
+#python UPD_study/models/VAE/r-VAEtrainer.py -ev t -mod MRI -seq t1
 
 python UPD_study/models/AMCons/AMCtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f 
 python UPD_study/models/CFLOW-AD/CFtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f  
@@ -80,11 +80,11 @@ python UPD_study/models/DAE/DAEtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f
 python UPD_study/models/DFR/DFRtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f  
 python UPD_study/models/FAE/FAEtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f  
 python UPD_study/models/f-AnoGAN/GANtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f  
-python UPD_study/models/PADIM/PADIMtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f  
+#python UPD_study/models/PADIM/PADIMtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f  
 python UPD_study/models/PII/PIItrainer.py -ev t -mod MRI -seq t1 --brats_t1 f  
 python UPD_study/models/RD/RDtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f  
 python UPD_study/models/VAE/VAEtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f
-python UPD_study/models/VAE/r-VAEtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f
+#python UPD_study/models/VAE/r-VAEtrainer.py -ev t -mod MRI -seq t1 --brats_t1 f
 
 python UPD_study/models/AMCons/AMCtrainer.py -ev t -mod CXR 
 python UPD_study/models/CFLOW-AD/CFtrainer.py -ev t -mod CXR  

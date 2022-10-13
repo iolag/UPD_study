@@ -232,7 +232,7 @@ def train():
                 train_losses = defaultdict(list)
 
             if config.step % config.anom_val_frequency == 0:
-                evaluate(config, small_testloader, val_step, val_loader)
+                evaluate(config, small_testloader, val_step)
 
             if config.step >= config.max_steps:
                 save_model(model, config)

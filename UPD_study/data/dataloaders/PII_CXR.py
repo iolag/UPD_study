@@ -29,16 +29,17 @@ def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, 
     sup = "sup_" if config.sup_devices else "no_sup_"
     if config.sex == 'both':
         file_name = f'*_normal_train_{ap}{sup}'
-        file = glob(os.path.join(config.datasets_dir,
-                                 'ChestXR/CheXpert-v1.0-small/normal_splits',
-                                 file_name + '*.txt'))
+        file = sorted(glob(os.path.join(config.datasets_dir,
+                                        'CXR/normal_splits',
+                                        file_name + '*.txt')))
+
     else:
 
         file_name = f'{config.sex}_normal_train_{ap}{sup}'
 
-        file = glob(os.path.join(config.datasets_dir,
-                                 'ChestXR/CheXpert-v1.0-small/normal_splits',
-                                 file_name + '*.txt'))
+        file = sorted(glob(os.path.join(config.datasets_dir,
+                                        'CXR/normal_splits',
+                                        file_name + '*.txt')))
 
     paths1 = open(file[0]).read().splitlines()
 
@@ -53,16 +54,16 @@ def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, 
             paths2 = paths2[:len(paths1)]
 
         for idx, path in enumerate(paths1):
-            paths1[idx] = os.path.join(config.datasets_dir, 'ChestXR', path)
+            paths1[idx] = os.path.join(config.datasets_dir, 'CXR', path)
         for idx, path in enumerate(paths2):
-            paths2[idx] = os.path.join(config.datasets_dir, 'ChestXR', path)
+            paths2[idx] = os.path.join(config.datasets_dir, 'CXR', path)
 
         if train:
             return paths1[200:] + paths2[200:]
     else:
 
         for idx, path in enumerate(paths1):
-            paths1[idx] = os.path.join(config.datasets_dir, 'ChestXR', path)
+            paths1[idx] = os.path.join(config.datasets_dir, 'CXR', path)
 
         # returns here if we are taking normal files
         if train:
@@ -74,16 +75,16 @@ def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, 
 
         file_name = f'*_anomal_{config.pathology}_{ap}{sup}'
 
-        file = glob(os.path.join(config.datasets_dir,
-                                 'ChestXR/CheXpert-v1.0-small/anomal_splits',
-                                 file_name + '*.txt'))
+        file = sorted(glob(os.path.join(config.datasets_dir,
+                                        'CXR/anomal_splits',
+                                        file_name + '*.txt')))
     else:
 
         file_name = f'{config.sex}_anomal_{config.pathology}_{ap}{sup}'
 
-        file = glob(os.path.join(config.datasets_dir,
-                                 'ChestXR/CheXpert-v1.0-small/anomal_splits',
-                                 file_name + '*.txt'))
+        file = sorted(glob(os.path.join(config.datasets_dir,
+                                        'CXR/anomal_splits',
+                                        file_name + '*.txt')))
 
     anom_paths1 = open(file[0]).read().splitlines()
 
@@ -98,9 +99,9 @@ def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, 
             anom_paths2 = anom_paths2[:len(anom_paths1)]
 
         for idx, path in enumerate(anom_paths1):
-            anom_paths1[idx] = os.path.join(config.datasets_dir, 'ChestXR', path)
+            anom_paths1[idx] = os.path.join(config.datasets_dir, 'CXR', path)
         for idx, path in enumerate(anom_paths2):
-            anom_paths2[idx] = os.path.join(config.datasets_dir, 'ChestXR', path)
+            anom_paths2[idx] = os.path.join(config.datasets_dir, 'CXR', path)
 
         normal_paths = paths1[:200] + paths2[:200]
         anomal_paths = anom_paths1 + anom_paths2
@@ -110,7 +111,7 @@ def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, 
     else:
         for idx, path in enumerate(anom_paths1):
 
-            anom_paths1[idx] = os.path.join(config.datasets_dir, 'ChestXR', path)
+            anom_paths1[idx] = os.path.join(config.datasets_dir, 'CXR', path)
 
         return paths1[:200], anom_paths1[:200], [0] * 200, [1] * 200
 

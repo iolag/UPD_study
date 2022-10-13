@@ -27,17 +27,17 @@ def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, 
     sup = "sup_" if config.sup_devices else "no_sup_"
     if config.sex == 'both':
         file_name = f'*_normal_train_{ap}{sup}'
-        file = glob(os.path.join(config.datasets_dir,
-                                 'CXR/normal_splits',
-                                 file_name + '*.txt'))
+        file = sorted(glob(os.path.join(config.datasets_dir,
+                                        'CXR/normal_splits',
+                                        file_name + '*.txt')))
 
     else:
 
         file_name = f'{config.sex}_normal_train_{ap}{sup}'
 
-        file = glob(os.path.join(config.datasets_dir,
-                                 'CXR/normal_splits',
-                                 file_name + '*.txt'))
+        file = sorted(glob(os.path.join(config.datasets_dir,
+                                        'CXR/normal_splits',
+                                        file_name + '*.txt')))
 
     paths1 = open(file[0]).read().splitlines()
 
@@ -73,16 +73,16 @@ def get_files(config: Namespace, train: bool = True) -> Union[List, Tuple[List, 
 
         file_name = f'*_anomal_{config.pathology}_{ap}{sup}'
 
-        file = glob(os.path.join(config.datasets_dir,
-                                 'CXR/anomal_splits',
-                                 file_name + '*.txt'))
+        file = sorted(glob(os.path.join(config.datasets_dir,
+                                        'CXR/anomal_splits',
+                                        file_name + '*.txt')))
     else:
 
         file_name = f'{config.sex}_anomal_{config.pathology}_{ap}{sup}'
 
-        file = glob(os.path.join(config.datasets_dir,
-                                 'CXR/anomal_splits',
-                                 file_name + '*.txt'))
+        file = sorted(glob(os.path.join(config.datasets_dir,
+                                        'CXR/anomal_splits',
+                                        file_name + '*.txt')))
 
     anom_paths1 = open(file[0]).read().splitlines()
 

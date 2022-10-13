@@ -16,10 +16,10 @@
 
 # Download DDR
 gdown https://drive.google.com/drive/folders/1z6tSFmxW_aNayUqVxx6h6bY4kwGzUTEC --folder
-cat DDR-dataset.zip* > DDR-dataset.zip
+cat DDR_dataset/DDR-dataset.zip* > DDR-dataset.zip
 unzip DDR-dataset.zip -d UPD_study/data/datasets/RF/
 rm DDR-dataset.zip
-rm -r DDR-dataset.zip*
+rm -r DDR_dataset
 mv 'UPD_study/data/datasets/RF/DDR-dataset/lesion_segmentation/valid/segmentation label' UPD_study/data/datasets/RF/DDR-dataset/lesion_segmentation/valid/label
 
 # Preprocess DDR

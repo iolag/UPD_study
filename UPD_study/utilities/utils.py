@@ -259,9 +259,9 @@ def misc_settings(config: Namespace) -> None:
             wandb_name = wandb_name + '_ATLAS'
 
     if not config.eval and not config.disable_wandb:
-        logger = wandb.init(project=config.method, name=wandb_name, config=config, reinit=True)
+        logger = wandb.init(project='UPD_study', name=wandb_name, config=config, reinit=True)
     if config.eval and not config.disable_wandb:
-        logger = wandb.init(project=config.method, name=f'{wandb_name}_eval', config=config, reinit=True)
+        logger = wandb.init(project='UPD_study', name=f'{wandb_name}_eval', config=config, reinit=True)
     if config.disable_wandb:
         logger = wandb.init(mode="disabled")
 

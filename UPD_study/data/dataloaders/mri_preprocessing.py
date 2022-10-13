@@ -18,8 +18,8 @@ def get_camcan_files(config) -> List[str]:
         files (List[str]): List of files
     """
     path = os.path.join(ROOT, 'data', 'datasets', 'MRI/CamCAN')
-    files = glob(os.path.join(path, '*/',
-                              f'*{config.sequence.upper()}w_stripped_registered.*'))
+    files = sorted(glob(os.path.join(path, '*/',
+                                     f'*{config.sequence.upper()}w_stripped_registered.*')))
 
     assert len(files) > 0, "No files found in CamCAN"
     return files
@@ -34,8 +34,8 @@ def get_brats_files(config) -> Tuple[List[str], List[str]]:
         seg_files (List[str]): List of segmentation files
     """
     # pt = '/u/home/lagi/thesis/UAD_study/Datasets'
-    files = glob(os.path.join(ROOT, 'data', 'datasets', 'MRI/BraTS/MICCAI_BraTS2020_TrainingData/*',
-                              f'*{config.sequence.lower()}*registered.*'))
+    files = sorted(glob(os.path.join(ROOT, 'data', 'datasets', 'MRI/BraTS/MICCAI_BraTS2020_TrainingData/*',
+                                     f'*{config.sequence.lower()}*registered.*')))
 
     seg_files = [os.path.join(os.path.dirname(f), 'anomaly_segmentation.nii') for f in files]
     assert len(files) > 0, "No files found in BraTS"
