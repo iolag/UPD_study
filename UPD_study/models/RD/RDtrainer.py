@@ -180,6 +180,11 @@ def val_step(input, test_samples: bool = False) -> Tuple[float, Tensor, Tensor]:
     # activations = [enc_output[0][-2, 0:10], enc_output[1][-2, 0:10], enc_output[2][-2, 0:10]]
     if config.modality == 'MRI':
         mask = torch.stack([inp[0].unsqueeze(0) > inp[0].min() for inp in input])
+        if config.get_images:
+            anomaly_map *= mask
+            mins = [(map[map > map.min()]) for map in anomaly_map]
+            mins = [map.min() for map in mins]
+            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         anomaly_map *= mask
         anomaly_score = torch.tensor([map[inp[0].unsqueeze(0) > inp[0].min()].max()
                                       for map, inp in zip(anomaly_map, input)])

@@ -118,6 +118,11 @@ def val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
     # for MRI apply brainmask
     if config.modality == 'MRI':
         mask = torch.stack([inp > inp.min() for inp in input])
+        if config.get_images:
+            anomaly_map *= mask
+            mins = [(map[map > map.min()]) for map in anomaly_map]
+            mins = [map.min() for map in mins]
+            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         anomaly_map *= mask
         anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
 

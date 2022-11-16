@@ -86,15 +86,8 @@ class NormalDataset(Dataset):
         Returns:
             image: image tensor of size []
         """
-        if self.preload_files:
-            return self.preload[idx]
-        else:
-            image = Image.open(self.files[idx])
-            image = self.transforms(image)
-            # Center input
-            if self.center:
-                image = (image - 0.5) * 2
-            return image
+
+        return self.preload[idx]
 
 
 class AnomalDataset(Dataset):

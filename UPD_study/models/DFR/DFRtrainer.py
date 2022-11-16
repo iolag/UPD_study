@@ -69,12 +69,12 @@ if config.image_size == 256:
     config.stride = 4
 
 
-# if config.modality == 'CXR':
-#     config.latent_channels = 474
-# if config.modality == 'MRI' and config.sequence == 't2':
-#     config.latent_channels = 162
-# if config.modality == 'MRI' and config.sequence == 't1':
-#     config.latent_channels = 191
+if config.modality == 'CXR':
+    config.latent_channels = 474
+if config.modality == 'MRI' and config.sequence == 't2':
+    config.latent_channels = 162
+if config.modality == 'MRI' and config.sequence == 't1':
+    config.latent_channels = 191
 
 if config.latent_channels is None:
     print('Estimating number of required latent channels')
@@ -178,7 +178,13 @@ def val_step(input, test_samples: bool = False) -> Tuple[float, Tensor, Tensor]:
 
     if config.modality == 'MRI':
         mask = torch.stack([inp > inp.min() for inp in input])
+        if config.get_images:
+            anomaly_map *= mask
+            mins = [(map[map > map.min()]) for map in anomaly_map]
+            mins = [map.min() for map in mins]
+            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         anomaly_map *= mask
+
         anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
 
     elif config.modality == 'RF':
@@ -222,7 +228,6 @@ def validate(val_loader, config):
 
     log({
         'val/input': input,
-
         'val/res': anomaly_map,
     }, config)
 
@@ -260,8 +265,8 @@ def train() -> None:
                 # Reset loss dict
                 train_losses = []
 
-            if config.step % config.val_frequency == 0:
-                validate(val_loader, config)
+            # if config.step % config.val_frequency == 0:
+            #     validate(val_loader, config)
 
             if config.step % config.anom_val_frequency == 0:
                 evaluate(config, small_testloader, val_step)

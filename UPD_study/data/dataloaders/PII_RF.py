@@ -75,28 +75,16 @@ class NormalDataset(Dataset):
 
         image = Image.open(file)
         image = self.transforms(image)
-        # Center input
-        if self.center:
-            image = (image - 0.5) * 2
+
         return image
 
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, idx):
-        if self.preload_files:
-            img = self.preload[idx]
-        else:
-            img = Image.open(self.files[idx])
-            img = self.transforms(img)
-
+        img = self.preload[idx]
         idx2 = np.random.randint(0, len(self))
-
-        if self.preload_files:
-            img2 = self.preload[idx2]
-        else:
-            img2 = Image.open(self.files[idx2])
-            img2 = self.transforms(img2)
+        img2 = self.preload[idx2]
 
         img, mask = pii(img.numpy(), img2.numpy(), is_mri=False)
 
@@ -132,7 +120,6 @@ class AnomalDataset(Dataset):
 
         self.center = config.center
         self.segmentations = segmentations
-        self.dataset = config.dataset
         self.images = anomal_paths + normal_paths
         self.labels = labels_anomal + labels_normal
         self.image_transforms = T.Compose([

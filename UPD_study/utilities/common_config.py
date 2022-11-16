@@ -2,8 +2,7 @@ from UPD_study.utilities.utils import str_to_bool
 
 
 def common_config(parser):
-    parser.add_argument('--test', '-asd', type=str_to_bool, default=False,
-                        help='% of samples to use for % experiment, defaults to 100 for no experiment')
+
     parser.add_argument('--percentage', '-pc', type=int, default=100,
                         help='% of samples to use for % experiment, defaults to 100 for no experiment')
     parser.add_argument('--shuffle', '-sh', type=str_to_bool, default=False,
@@ -45,7 +44,7 @@ def common_config(parser):
     parser.add_argument('--brats_t1', type=str_to_bool, default=True,
                         help='True for BraTS T1, false for ATLAS')
     parser.add_argument('--slice_range', type=int, nargs='+',
-                        default=(0, 155), help='Lower and Upper slice index')
+                        default=(15, 135), help='Lower and Upper slice index')
     parser.add_argument('--normalize', type=str_to_bool, default=False,
                         help='Normalize images to 98th percentile and scale to [0,1]')
     parser.add_argument('--equalize_histogram', type=str_to_bool,

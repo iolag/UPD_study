@@ -42,12 +42,9 @@ config.model_dir_path = pathlib.Path(__file__).parents[0]
 config.disable_wandb = True
 misc_settings(config)
 
-if config.eval:
-    logger = wandb.init(project='PADIM', name=config.name, config=config, reinit=True)
-    config.logger = logger
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
-# PaDiM cannot handle more than 20% of CamCAN samples in our machine
+# PaDiM cannot handle more than 18% of CamCAN samples in our machine
 if config.modality == 'MRI' and not config.eval:
     config.normal_split = 0.18
 
@@ -138,7 +135,7 @@ def train():
     print('Constructing embedding volume...')
 
     embedding_vectors = train_outputs['layer1']
-
+    print(embedding_vectors.shape)
     for layer_name in ['layer2', 'layer3']:
         next_layer_upscaled = F.interpolate(train_outputs[layer_name],
                                             size=embedding_vectors.size(-1),
@@ -146,7 +143,7 @@ def train():
                                             align_corners=False)
 
         embedding_vectors = torch.cat([embedding_vectors, next_layer_upscaled], dim=1)
-
+    print(embedding_vectors.shape)
     # randomly select d dimensions of embedding vector
     embedding_vectors = torch.index_select(embedding_vectors.cpu(), 1, idx)
 
@@ -155,6 +152,7 @@ def train():
     B, C, H, W = embedding_vectors.size()
     embedding_vectors = embedding_vectors.view(B, C, H * W)
     mean = torch.mean(embedding_vectors, dim=0).numpy()
+    print(mean.shape)
     cov = torch.zeros(C, C, H * W).numpy()
     ident = np.identity(C)
     for i in range(H * W):
@@ -205,7 +203,12 @@ def test(dataloader):
     # extract test set features
     total_elapsed_time = 0
     benchmark_step = 0
+    index = 0
     for batch in tqdm(dataloader, '| feature extraction | test | %s' % config.modality):
+        print(index)
+        index += 1
+        if index == 5:
+            break
         timer = perf_counter()
         input = batch[0]
         mask = batch[1]
@@ -278,6 +281,17 @@ def test(dataloader):
 
         anomaly_maps.append(anomaly_map)
 
+        # i += 1
+        # print(i)
+        # if config.get_images:
+        #     if i < 4:
+        #         print(input.shape, mask.shape, anomaly_map.shape)
+        #         log({'anom_val/input images': input,
+        #              'anom_val/targets': mask,
+        #              'anom_val/anomaly maps': torch.from_numpy(anomaly_map)}, config)
+        #     else:
+        #         exit(0)
+
         # Speed Benchmark
         if config.speed_benchmark:
             benchmark_step += 1
@@ -314,6 +328,12 @@ def test(dataloader):
     # apply brainmask for MRI
     if config.modality == 'MRI':
         masks = [inp > inp.min() for inp in inputs2]
+
+        if config.get_images:
+            anomaly_maps = [map * mask for map, mask in zip(anomaly_maps, masks)]
+            mins = [(map[map > map.min()]) for map in anomaly_maps]
+            mins = [map.min() for map in mins]
+            anomaly_maps = torch.cat([(map - min) for map, min in zip(anomaly_maps, mins)]).unsqueeze(1)
         anomaly_maps = [map * mask for map, mask in zip(anomaly_maps, masks)]
         anomaly_scores = [torch.Tensor([map[inp > inp.min()].max()
                                         for map, inp in zip(anomaly_maps, inputs2)])]
@@ -331,10 +351,13 @@ def evaluation(inputs, segmentations, labels, anomaly_maps, anomaly_scores):
     metrics(config, anomaly_maps, segmentations, anomaly_scores, labels)
 
     # Log images to wandb
+    config.num_images_log = config.num_images_log * 4
     anomaly_maps = torch.cat(anomaly_maps)[:config.num_images_log]
 
     log({'anom_val/input images': inputs[0],
-         'anom_val/anomaly maps': anomaly_maps}, config)
+         'anom_val/anomaly maps': anomaly_maps,
+         'anom_val/segmentations': segmentations[0]
+         }, config)
 
 
 if __name__ == '__main__':

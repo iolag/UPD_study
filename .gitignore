@@ -9,6 +9,7 @@ f-AnoGAN/generated
 **/*.pth
 **/*.pt
 **/*.jpg
+**/*.png
 **/*.nii.*
 model_ckps/
 saved_models/
@@ -28,3 +29,5 @@ image_vs_feature/
 main.sh
 t.sh
 CheXpert-v1.0-small
+structure.md
+get_images.sh

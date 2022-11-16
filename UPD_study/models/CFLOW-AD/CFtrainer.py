@@ -123,8 +123,8 @@ for i in range(1, config.num_pool_layers):
 # optimizer
 optimizer = torch.optim.Adam(params, lr=config.lr)
 
+save_path = os.path.join(config.model_dir_path, 'saved_models')
 if config.eval:
-    save_path = os.path.join(config.model_dir_path, 'saved_models')
     [decoder.load_state_dict(torch.load(f'{save_path}/{config.modality}/{config.name}_decoder_{i}.pth'))
      for i, decoder in enumerate(decoders)]
 
@@ -166,7 +166,7 @@ def train():
                 print(f'Reached {config.max_steps} iterations. Finished training {config.name}.')
                 for i, decoder in enumerate(decoders):
                     torch.save(decoder.state_dict(),
-                               f'saved_models/{config.modality}/{config.name}_decoder_{i}.pth')
+                               f'{save_path}/{config.modality}/{config.name}_decoder_{i}.pth')
                 return
 
 
@@ -332,11 +332,23 @@ def val_step(input, test_samples: bool = False):
         anomaly_map = torch.from_numpy(anomaly_map).to(config.device)
 
     # apply brainmask for MRI
-    if config.modality == 'MRI':
+    if config.modality in ['MRI', 'MRInoram', 'CT']:
         # normalize brain pixels only
         input = input[:, 0].unsqueeze(1)
+
         mask = torch.stack([inp > inp.min() for inp in input])
+        if config.get_images:
+            anomaly_map *= mask
+            mins = [(map[map > map.min()]) for map in anomaly_map]
+            mins = [map.min() for map in mins]
+
+            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         anomaly_map *= mask
+
+        # mins = [(map[msk].min()) for map, msk in zip(anomaly_map, mask)]
+        # anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
+        # anomaly_map *= mask
+
         anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
 
     elif config.modality == 'RF':
