@@ -1,1 +1,0 @@
-each method has a validation step that handles anomaly map and score and evaluate() takes as an argument
