@@ -34,8 +34,8 @@ python3 -m pip install --editable .
 ```
 
 To be able to use [Weights & Biases](https://wandb.ai) for logging follow the instructions at https://docs.wandb.ai/quickstart.
-
-A quick guide on the folder and code structure can be found [here](structure.md).
+<!-- 
+A quick guide on the folder and code structure can be found [here](structure.md). -->
 
 ## Data
 
@@ -53,7 +53,7 @@ bash UPD_study/data/data_preprocessing/prepare_DDR.sh
 
 ### MRI: CamCAN, ATLAS, BraTS 
 
-To download and preprocess ATLAS and BraTS, run:
+To download and preprocess ATLAS and BraTS, first download ROBEX from https://www.nitrc.org/projects/robex  and extract it in data/data_preprocessing/ROBEX. Then run:
 
 ```bash
 bash UPD_study/data/data_preprocessing/prepare_ATLAS.sh
