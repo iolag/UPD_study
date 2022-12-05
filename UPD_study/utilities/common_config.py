@@ -72,5 +72,5 @@ def common_config(parser):
     # SSIM evaluation
     parser.add_argument('--ssim_eval', '-ssim', type=str_to_bool, default=True,
                         help='Whether to use SSIM on residual-based methods.')
-
+    parser.add_argument('--get_images', '-img', type=str_to_bool, default=False)
     return parser
