@@ -203,12 +203,10 @@ def test(dataloader):
     # extract test set features
     total_elapsed_time = 0
     benchmark_step = 0
-    index = 0
+
     for batch in tqdm(dataloader, '| feature extraction | test | %s' % config.modality):
-        print(index)
-        index += 1
-        if index == 5:
-            break
+     
+
         timer = perf_counter()
         input = batch[0]
         mask = batch[1]
@@ -281,16 +279,7 @@ def test(dataloader):
 
         anomaly_maps.append(anomaly_map)
 
-        # i += 1
-        # print(i)
-        # if config.get_images:
-        #     if i < 4:
-        #         print(input.shape, mask.shape, anomaly_map.shape)
-        #         log({'anom_val/input images': input,
-        #              'anom_val/targets': mask,
-        #              'anom_val/anomaly maps': torch.from_numpy(anomaly_map)}, config)
-        #     else:
-        #         exit(0)
+
 
         # Speed Benchmark
         if config.speed_benchmark:
