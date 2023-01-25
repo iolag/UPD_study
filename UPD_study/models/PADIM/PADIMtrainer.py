@@ -201,7 +201,9 @@ def test(dataloader):
     # extract test set features
     total_elapsed_time = 0
     benchmark_step = 0
+
     for batch in tqdm(dataloader, '| feature extraction | test | %s' % config.modality):
+
         timer = perf_counter()
         input = batch[0]
         mask = batch[1]
