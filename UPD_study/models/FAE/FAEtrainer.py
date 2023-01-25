@@ -70,7 +70,7 @@ print("Initializing model...")
 model = FeatureReconstructor(config).to(config.device)
 
 # load CCD pretrained backbone
-if config.load_pretrained and not config.eval:
+if config.load_pretrained:
     config.arch = 'resnet18'
     model.extractor.backbone = load_pretrained(model.extractor.backbone, config)
 

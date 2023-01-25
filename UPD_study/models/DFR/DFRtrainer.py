@@ -103,7 +103,6 @@ model = FeatureAE(
 
 # load pretrained with CCD
 if config.load_pretrained:
-    config.modality = 'MRI' if config.modality == "MRInoram" else config.modality
     model.extractor.feat_extractor.backbone = load_pretrained(model.extractor.feat_extractor.backbone, config)
     _set_requires_grad_false(model.extractor.feat_extractor.backbone)
     if config.arch == 'vgg19':
@@ -111,7 +110,6 @@ if config.load_pretrained:
         model.extractor.feat_extractor.features = nn.Sequential(
             *(backbone_feat_modules + [model.extractor.feat_extractor.backbone.avgpool]))
         _set_requires_grad_false(model.extractor.feat_extractor.backbone)
-
 # Init optimizer
 optimizer = torch.optim.Adam(model.parameters(),
                              lr=config.lr, weight_decay=config.weight_decay)

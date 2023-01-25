@@ -54,7 +54,7 @@ def evaluate(config: Namespace, test_loader: DataLoader, val_step: Callable) -> 
                       total_elapsed_time / (benchmark_step - 3),
                       "fps: ", 160 / total_elapsed_time)
                 return
-
+    print(torch.cat(anomaly_maps).max(), torch.cat(anomaly_maps).min())
     # calculate metrics like AP, AUROC, on pixel and/or image level
     metrics(config, anomaly_maps, segmentations, anomaly_scores, labels)
 

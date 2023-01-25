@@ -18,7 +18,6 @@ from UPD_study.utilities.common_config import common_config
 from UPD_study.utilities.utils import (seed_everything,
                                        load_data, load_pretrained,
                                        misc_settings, log, metrics)
-import wandb
 import pathlib
 import os
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
@@ -70,9 +69,11 @@ elif config.arch == 'wide_resnet50_2':
     model = wide_resnet50_2(pretrained=True)
     t_d = 1792  # 256 512 1024
     d = 550
+
 # load CCD pretrained backbone
 if config.load_pretrained:
     model = load_pretrained(model, config)
+
 
 # create index vector to subsample embedding_vector
 idx = torch.tensor(sample(range(0, t_d), d))
@@ -135,7 +136,6 @@ def train():
     print('Constructing embedding volume...')
 
     embedding_vectors = train_outputs['layer1']
-    print(embedding_vectors.shape)
     for layer_name in ['layer2', 'layer3']:
         next_layer_upscaled = F.interpolate(train_outputs[layer_name],
                                             size=embedding_vectors.size(-1),
@@ -143,7 +143,6 @@ def train():
                                             align_corners=False)
 
         embedding_vectors = torch.cat([embedding_vectors, next_layer_upscaled], dim=1)
-    print(embedding_vectors.shape)
     # randomly select d dimensions of embedding vector
     embedding_vectors = torch.index_select(embedding_vectors.cpu(), 1, idx)
 
@@ -152,7 +151,6 @@ def train():
     B, C, H, W = embedding_vectors.size()
     embedding_vectors = embedding_vectors.view(B, C, H * W)
     mean = torch.mean(embedding_vectors, dim=0).numpy()
-    print(mean.shape)
     cov = torch.zeros(C, C, H * W).numpy()
     ident = np.identity(C)
     for i in range(H * W):
@@ -203,12 +201,7 @@ def test(dataloader):
     # extract test set features
     total_elapsed_time = 0
     benchmark_step = 0
-    index = 0
     for batch in tqdm(dataloader, '| feature extraction | test | %s' % config.modality):
-        print(index)
-        index += 1
-        if index == 5:
-            break
         timer = perf_counter()
         input = batch[0]
         mask = batch[1]
@@ -280,17 +273,6 @@ def test(dataloader):
             anomaly_map = np.expand_dims(anomaly_map, 0)
 
         anomaly_maps.append(anomaly_map)
-
-        # i += 1
-        # print(i)
-        # if config.get_images:
-        #     if i < 4:
-        #         print(input.shape, mask.shape, anomaly_map.shape)
-        #         log({'anom_val/input images': input,
-        #              'anom_val/targets': mask,
-        #              'anom_val/anomaly maps': torch.from_numpy(anomaly_map)}, config)
-        #     else:
-        #         exit(0)
 
         # Speed Benchmark
         if config.speed_benchmark:

@@ -5,7 +5,7 @@ def common_config(parser):
 
     parser.add_argument('--percentage', '-pc', type=int, default=100,
                         help='% of samples to use for % experiment, defaults to 100 for no experiment')
-    parser.add_argument('--shuffle', '-sh', type=str_to_bool, default=False,
+    parser.add_argument('--shuffle', '-sh', type=str_to_bool, default=True,
                         help='shuffle test set (after splitting)')
     parser.add_argument('--speed_benchmark', '-speed', type=str_to_bool,
                         default=False, help='Excecute speed benchmark')

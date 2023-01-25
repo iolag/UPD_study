@@ -31,5 +31,5 @@ t.sh
 CheXpert-v1.0-small
 structure.md
 get_images.sh
-annotated_diffusion.ipynb
 UPD_study/models/RD/RDtest.py
+UPD_study/models/FAE/FAEtest.py
