@@ -206,9 +206,10 @@ def misc_settings(config: Namespace) -> None:
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     if config.speed_benchmark or config.space_benchmark:
-        config.modality = 'CXR'
+        config.modality = 'MRI'
         config.disable_wandb = True
         config.eval = True
+        config.batch_size = 16
 
     if not config.eval:
         config.no_dice = True

@@ -8,8 +8,8 @@ python UPD_study/models/CFLOW-AD/CFtrainer.py -speed t
 python UPD_study/models/CFLOW-AD/CFtrainer.py -space t
 python UPD_study/models/DAE/DAEtrainer.py -speed t
 python UPD_study/models/DAE/DAEtrainer.py -space t
-python UPD_study/models/DFR/DFRtrainer.py -speed t
-python UPD_study/models/DFR/DFRtrainer.py -space t
+# python UPD_study/models/DFR/DFRtrainer.py -speed t
+# python UPD_study/models/DFR/DFRtrainer.py -space t
 python UPD_study/models/FAE/FAEtrainer.py -speed t
 python UPD_study/models/FAE/FAEtrainer.py -space t
 python UPD_study/models/f-AnoGAN/GANtrainer.py -speed t

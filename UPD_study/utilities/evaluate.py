@@ -4,7 +4,6 @@ from UPD_study.utilities.utils import metrics, log
 from argparse import Namespace
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from time import perf_counter
 
 
 def evaluate(config: Namespace, test_loader: DataLoader, val_step: Callable) -> None:
@@ -23,15 +22,18 @@ def evaluate(config: Namespace, test_loader: DataLoader, val_step: Callable) -> 
     anomaly_maps = []
     inputs = []
     segmentations = []
-    benchmark_step = 0
-    total_elapsed_time = 0
+
+    if config.speed_benchmark:
+        benchmark_step = 0
+        torch.cuda.synchronize()
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
 
     # forward pass the testloader to extract anomaly maps, scores, masks, labels
     for input, mask in tqdm(test_loader, desc="Test set", disable=config.speed_benchmark):
 
-        if config.speed_benchmark:
-            timer = perf_counter()
-
+        # if config.speed_benchmark:
+        #     timer = perf_counter()
         # forward pass, output = [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
         output = val_step(input.to(config.device), test_samples=True)
         inputs.append(input.cpu())
@@ -45,16 +47,20 @@ def evaluate(config: Namespace, test_loader: DataLoader, val_step: Callable) -> 
         if config.speed_benchmark:
             benchmark_step += 1
             # ignore 3 warmup steps
-            if benchmark_step > 3:
-                run_time = perf_counter() - timer
-                total_elapsed_time += run_time
+            if benchmark_step == 3:
+                start.record()
+                # run_time = perf_counter() - timer
+                # total_elapsed_time += run_time
 
             if benchmark_step == 13:
-                print(f"last batch inference time: {run_time} - Mean batch inference time: ",
-                      total_elapsed_time / (benchmark_step - 3),
-                      "fps: ", 160 / total_elapsed_time)
+                end.record()
+                torch.cuda.synchronize()
+                print(f'fps: {1000 * config.batch_size * 10 /start.elapsed_time(end)}')
+                # print(f"last batch inference time: {run_time} - Mean batch inference time: ",
+                #       total_elapsed_time / (benchmark_step - 3),
+                #       "fps: ", 160 / total_elapsed_time)
                 return
-    print(torch.cat(anomaly_maps).max(), torch.cat(anomaly_maps).min())
+
     # calculate metrics like AP, AUROC, on pixel and/or image level
     metrics(config, anomaly_maps, segmentations, anomaly_scores, labels)
 
@@ -75,6 +81,7 @@ def evaluate(config: Namespace, test_loader: DataLoader, val_step: Callable) -> 
     # if thats the case log the reconstructions
     if len(output) == 3:
         log({'anom_val/reconstructions': output[2]}, config)
+
     # else:
     #     i = 0
     #     for input, mask in iter(test_loader):

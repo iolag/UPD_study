@@ -11,7 +11,6 @@ from scipy.spatial.distance import mahalanobis
 from scipy.ndimage import gaussian_filter
 import torch
 import torch.nn.functional as F
-from time import perf_counter
 # from torchvision.models import wide_resnet50_2, resnet18
 from resnet import wide_resnet50_2, resnet18
 from UPD_study.utilities.common_config import common_config
@@ -199,12 +198,15 @@ def test(dataloader):
     anomaly_maps = []
     test_outputs = OrderedDict([('layer1', []), ('layer2', []), ('layer3', [])])
     # extract test set features
-    total_elapsed_time = 0
-    benchmark_step = 0
+
+    if config.speed_benchmark:
+        print('yo')
+        benchmark_step = 0
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
 
     for batch in tqdm(dataloader, '| feature extraction | test | %s' % config.modality):
 
-        timer = perf_counter()
         input = batch[0]
         mask = batch[1]
         inputs.append(input)
@@ -280,15 +282,14 @@ def test(dataloader):
         if config.speed_benchmark:
             benchmark_step += 1
             # ignore 3 warmup steps
-            if benchmark_step > 3:
-                run_time = perf_counter() - timer
-                total_elapsed_time += run_time
+            if benchmark_step == 3:
+                start.record()
 
-                if benchmark_step == 13:
-                    print(f"current forward pass time: {run_time} - Mean inference time: ",
-                          total_elapsed_time / (benchmark_step - 3),
-                          "fps: ", 160 / total_elapsed_time)
-                    exit(0)
+            if benchmark_step == 13:
+                end.record()
+                torch.cuda.synchronize()
+                print(f'fps: {1000 * config.batch_size * 10 /start.elapsed_time(end)}')
+                exit(0)
 
     anomaly_maps = np.concatenate(anomaly_maps)
 

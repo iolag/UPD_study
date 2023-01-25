@@ -66,7 +66,7 @@ def common_config(parser):
     parser.add_argument('--anom_val_frequency', '-avf', type=int, default=1000,
                         help='Validation frequency on anomalous samples')
     parser.add_argument('--val_steps', type=int, default=50, help='validation steps')
-    parser.add_argument('--num_images_log', '-nil', type=int, default=32,
+    parser.add_argument('--num_images_log', '-nil', type=int, default=16,
                         help='Number of images to log on wandb')
 
     # SSIM evaluation
