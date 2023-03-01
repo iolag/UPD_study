@@ -17,8 +17,7 @@ import torch
 from UPD_study import ROOT
 from UPD_study.utilities.metrics import (
     compute_average_precision,
-    compute_auroc,
-    compute_best_dice
+    compute_auroc, compute_best_dice
 )
 from tqdm import tqdm
 
