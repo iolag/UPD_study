@@ -10,12 +10,13 @@ from UPD_study.models.FAE.FAEmodel import FeatureReconstructor
 from torch import Tensor
 from torchinfo import summary
 from UPD_study.utilities.common_config import common_config
-from UPD_study.utilities.utils import (save_model, seed_everything,
+from UPD_study.utilities.utils import (save_model, test_inference_speed, seed_everything,
                                        load_data, load_pretrained,
                                        misc_settings, log, load_model)
 from UPD_study.utilities.evaluate import evaluate
 from typing import Tuple
 import pathlib
+
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
 
@@ -118,11 +119,6 @@ def val_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
     # for MRI apply brainmask
     if config.modality == 'MRI':
         mask = torch.stack([inp > inp.min() for inp in input])
-        if config.get_images:
-            anomaly_map *= mask
-            mins = [(map[map > map.min()]) for map in anomaly_map]
-            mins = [map.min() for map in mins]
-            anomaly_map = torch.cat([(map - min) for map, min in zip(anomaly_map, mins)]).unsqueeze(1)
         anomaly_map *= mask
         anomaly_score = torch.tensor([map[inp > inp.min()].max() for map, inp in zip(anomaly_map, input)])
 
@@ -230,6 +226,9 @@ def validate(val_loader, config) -> None:
 
 
 if __name__ == '__main__':
+    if config.speed_benchmark:
+        test_inference_speed(val_step)
+        exit(0)
     if config.eval:
         print(f'Evaluating {config.name}...')
         evaluate(config, big_testloader, val_step)

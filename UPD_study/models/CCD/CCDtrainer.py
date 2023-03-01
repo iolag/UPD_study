@@ -9,6 +9,8 @@ from models import ContrastiveModel
 from losses import SimCLRLoss
 from collections import defaultdict
 from time import time
+import pathlib
+
 from UPD_study.utilities.common_config import common_config
 from UPD_study.utilities.utils import (save_model, seed_everything,
                                        misc_settings, str_to_bool,
@@ -32,7 +34,7 @@ def get_config():
                         help='Train only with the SimClr task')
     parser.add_argument('--backbone-arch', '-arch', type=str, default='wide_resnet50_2', help='Backbone',
                         choices=['resnet18', 'resnet50', 'wide_resnet50_2',
-                                 'vae', 'fanogan', 'vgg19', 'unet', 'pii', 'amc'])
+                                 'vae', 'fanogan', 'vgg19', 'unet', 'pii', 'amc', 'expvae'])
     parser.add_argument('--cls-head-number', default=2, type=int)
     parser.add_argument('--lr', '-lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--max-epochs', type=int, default=200, help='Number of training epochs')
@@ -95,6 +97,7 @@ if config.backbone_arch in ['resnet18']:
     config.center = True
 
 # set initial script settings
+config.model_dir_path = pathlib.Path(__file__).parents[0]
 config.method = 'CCD'
 misc_settings(config)
 
@@ -103,9 +106,7 @@ misc_settings(config)
 
 print('Loading dataset...')
 
-if config.modality == 'COL':
-    from UPD_study.models.CCD.datasets.COL_CCD import get_train_dataloader
-elif config.modality == 'MRI':
+if config.modality == 'MRI':
     from UPD_study.models.CCD.datasets.MRI_CCD import get_train_dataloader
 elif config.modality == 'CXR':
     from UPD_study.models.CCD.datasets.CXR_CCD import get_train_dataloader

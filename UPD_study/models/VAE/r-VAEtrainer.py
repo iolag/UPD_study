@@ -16,7 +16,7 @@ import pathlib
 from UPD_study.utilities.evaluate import evaluate
 from UPD_study.utilities.common_config import common_config
 from UPD_study.utilities.utils import (seed_everything, load_data, load_pretrained,
-                                       misc_settings, ssim_map, load_model)
+                                       misc_settings, ssim_map, load_model, test_inference_speed)
 
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
@@ -223,6 +223,9 @@ def restoration_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
 
 
 if __name__ == '__main__':
+    if config.speed_benchmark:
+        test_inference_speed(restoration_step)
+        exit(0)
 
     print('Evaluating model...')
 

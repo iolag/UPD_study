@@ -358,7 +358,9 @@ def val_step(input, test_samples: bool = False):
     return anomaly_map, anomaly_score
 
 
+from UPD_study.utilities.utils import test_inference_speed
 if __name__ == '__main__':
+
     if not config.eval:
         train()
     else:
@@ -378,6 +380,9 @@ if __name__ == '__main__':
             num_params.append(a.total_params)
             train_step(torch.rand(16, 3, 128, 128).to(config.device))
             print('Number of Million parameters: ', sum(num_params) / 1e06)
+            exit(0)
+        if config.speed_benchmark:
+            test_inference_speed(val_step)
             exit(0)
 
         print('Evaluating model...')

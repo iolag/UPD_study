@@ -18,7 +18,8 @@ from UPD_study.utilities.common_config import common_config
 from UPD_study.utilities.utils import (save_model, seed_everything,
                                        load_data, load_pretrained,
                                        misc_settings, ssim_map,
-                                       load_model, log, str_to_bool)
+                                       load_model, test_inference_speed,
+                                       log, str_to_bool)
 from UPD_study.utilities.evaluate import evaluate
 """"""""""""""""""""""""""""""""""" Config """""""""""""""""""""""""""""""""""
 
@@ -214,6 +215,9 @@ def train():
 
 
 if __name__ == '__main__':
+    if config.speed_benchmark:
+        test_inference_speed(anom_val_step)
+        exit(0)
     if config.eval:
         print('Evaluating model...')
         evaluate(config, big_testloader, anom_val_step)

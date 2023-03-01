@@ -244,10 +244,6 @@ def misc_settings(config: Namespace) -> None:
     # Select training device
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    if config.make_plots:
-        config.eval = True
-        config.slice_range = (50, 100)
-
     if config.speed_benchmark or config.space_benchmark:
         config.modality = 'CXR'
         config.disable_wandb = True
@@ -257,13 +253,6 @@ def misc_settings(config: Namespace) -> None:
 
     if not config.eval:
         config.no_dice = True
-
-    if config.get_images:
-        if config.method == 'DFR':
-            config.device = 'cpu'
-        config.num_images_log = 31
-        config.anomal_split = 0.999
-        config.shuffle = False
 
     print(f"Using {config.device}.")
 
@@ -310,16 +299,12 @@ def misc_settings(config: Namespace) -> None:
         else:
             wandb_name = wandb_name + '_ATLAS'
 
-    if config.get_images:
-        config.eval = True
-        logger = wandb.init(project='images', name=name, config=config, reinit=True)
-    else:
-        if not config.eval and not config.disable_wandb:
-            logger = wandb.init(project='UPD_study', name=wandb_name, config=config, reinit=True)
-        if config.eval and not config.disable_wandb:
-            logger = wandb.init(project='UPD_study', name=f'{wandb_name}_eval', config=config, reinit=True)
-        if config.disable_wandb:
-            logger = wandb.init(mode="disabled")
+    if not config.eval and not config.disable_wandb:
+        logger = wandb.init(project='UPD_study', name=wandb_name, config=config, reinit=True)
+    if config.eval and not config.disable_wandb:
+        logger = wandb.init(project='UPD_study', name=f'{wandb_name}_eval', config=config, reinit=True)
+    if config.disable_wandb:
+        logger = wandb.init(mode="disabled")
 
     # keep name, logger, step in config to be used downstream
     config.name = name
@@ -492,28 +477,22 @@ def load_data(config: Namespace) -> Tuple[DataLoader, ...]:
     """
 
     # conditional import for dataloaders according to modality
-    if not config.get_images:
-        if config.method == 'PII':
-            if config.modality == 'MRI':
-                from UPD_study.data.dataloaders.PII_MRI import get_dataloaders
-            elif config.modality == 'CXR':
-                from UPD_study.data.dataloaders.PII_CXR import get_dataloaders
-            elif config.modality == 'RF':
-                from UPD_study.data.dataloaders.PII_RF import get_dataloaders
-        else:
-            if config.modality == 'MRI':
-                from UPD_study.data.dataloaders.MRI import get_dataloaders
-            elif config.modality == 'CXR':
-                from UPD_study.data.dataloaders.CXR import get_dataloaders
-            elif config.modality == 'RF':
-                from UPD_study.data.dataloaders.RF import get_dataloaders
+
+    if config.method == 'PII':
+        if config.modality == 'MRI':
+            from UPD_study.data.dataloaders.PII_MRI import get_dataloaders
+        elif config.modality == 'CXR':
+            from UPD_study.data.dataloaders.PII_CXR import get_dataloaders
+        elif config.modality == 'RF':
+            from UPD_study.data.dataloaders.PII_RF import get_dataloaders
     else:
         if config.modality == 'MRI':
-            from UPD_study.data.dataloaders.MRIimages import get_dataloaders
+            from UPD_study.data.dataloaders.MRI import get_dataloaders
         elif config.modality == 'CXR':
-            from UPD_study.data.dataloaders.CXRimages import get_dataloaders
-        else:
+            from UPD_study.data.dataloaders.CXR import get_dataloaders
+        elif config.modality == 'RF':
             from UPD_study.data.dataloaders.RF import get_dataloaders
+
     print("Loading data...")
     t_load_data_start = time()
 
@@ -533,12 +512,10 @@ def load_data(config: Namespace) -> Tuple[DataLoader, ...]:
 
         return train_loader, val_loader, None, None
 
-    # DFR cannot handle large batch size due to memory requirements, hence keep original batch size
-    # also r-vae's results are batch_size dependent
-    if config.method != 'DFR' and not config.restoration:
+    #  r-vae's results are batch_size dependent
+    if not config.restoration:
         config.batch_size = config.num_images_log
-    if config.get_images:
-        config.batch_size = config.num_images_log
+
     big_testloader, small_testloader = get_dataloaders(config, train=False)
 
     print('Big test-set: {} samples, Small test-set: set: {} samples.'.format(
@@ -552,7 +529,7 @@ def load_data(config: Namespace) -> Tuple[DataLoader, ...]:
     # If this is not an evaluation run, or method is CFLOW-AD and DFR which require
     # normal samples during inference.
     # Restore batch size and return train and validation dataloaders along with testloaders.
-    if not config.eval or config.method in ['CFLOW-AD', 'DFR'] or (config.method == 'Cutpaste' and not config.get_images):
+    if not config.eval or config.method in ['CFLOW-AD', 'Cutpaste']:
         # restore desired batch_size
         config.batch_size = temp
 

@@ -34,6 +34,7 @@ def get_brats_files(config) -> Tuple[List[str], List[str]]:
         seg_files (List[str]): List of segmentation files
     """
     # pt = '/u/home/lagi/thesis/UAD_study/Datasets'
+
     files = glob(os.path.join(ROOT, 'data', 'datasets', 'MRI/BraTS/MICCAI_BraTS2020_TrainingData/*',
                               f'*{config.sequence.lower()}*registered.*'))
 
@@ -42,7 +43,7 @@ def get_brats_files(config) -> Tuple[List[str], List[str]]:
     return files, seg_files
 
 
-def get_atlas_files(cf) -> List[str]:
+def get_atlas_files(config) -> List[str]:
     """Get all ATLAS file paths
     Args:
         config (Namespace): configuration object
@@ -50,8 +51,13 @@ def get_atlas_files(cf) -> List[str]:
         files (List[str]): List of files
         seg_files (List[str]): List of segmentation files
     """
-    path = os.path.join(ROOT, 'data', 'datasets', 'MRI/ATLAS/ATLAS_2/Training')
-    files = sorted(glob(os.path.join(path, '*/*/*/*/*stripped_registered*')))
+    if config.get_images:
+
+        path = '/datasets/Datasets/MRI/ATLAS/lesion'
+        files = glob(os.path.join(path, '*/*/*stripped_registered*'))
+    else:
+        path = os.path.join(ROOT, 'data', 'datasets', 'MRI/ATLAS/ATLAS_2/Training')
+        files = sorted(glob(os.path.join(path, '*/*/*/*/*stripped_registered*')))
     seg_files = [os.path.join(os.path.dirname(f), 'anomaly_segmentation.nii.gz') for f in files]
     assert len(files) > 0, "No files found in ATLAS"
     return files, seg_files

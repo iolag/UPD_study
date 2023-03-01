@@ -33,3 +33,8 @@ structure.md
 get_images.sh
 UPD_study/models/RD/RDtest.py
 UPD_study/models/FAE/FAEtest.py
+UPD_study/models/H-TAE-S/models/
+get_images.sh
+output.png
+upd_study_backup/
+DFR/

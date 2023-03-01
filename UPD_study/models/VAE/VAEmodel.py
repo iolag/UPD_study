@@ -177,3 +177,9 @@ class VAE(nn.Module):
         y = self.decoder(decoder_inp)
 
         return y, mu, logvar
+
+    # # expVAE function
+    # def reparameterize_eval(self, mu, logvar):
+    #     std = torch.exp(0.5 * logvar)
+    #     eps = torch.randn_like(std)
+    #     return eps.mul(std).add_(mu)

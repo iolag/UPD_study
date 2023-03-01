@@ -11,7 +11,6 @@ from scipy.spatial.distance import mahalanobis
 from scipy.ndimage import gaussian_filter
 import torch
 import torch.nn.functional as F
-# from torchvision.models import wide_resnet50_2, resnet18
 from resnet import wide_resnet50_2, resnet18
 from UPD_study.utilities.common_config import common_config
 from UPD_study.utilities.utils import (seed_everything,
@@ -27,7 +26,7 @@ def get_config():
     parser = common_config(parser)
     parser.add_argument('--arch', type=str, default='wide_resnet50_2',
                         choices=['resnet18', 'wide_resnet50_2'])
-    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
 
     return parser.parse_args()
 
@@ -39,7 +38,6 @@ config.method = 'PADIM'
 config.model_dir_path = pathlib.Path(__file__).parents[0]
 config.disable_wandb = True
 misc_settings(config)
-
 
 """"""""""""""""""""""""""""""""" Load data """""""""""""""""""""""""""""""""
 # PaDiM cannot handle more than 18% of CamCAN samples in our machine
@@ -167,6 +165,7 @@ def train():
 
 
 """"""""""""""""""""""""""""""""""" Testing """""""""""""""""""""""""""""""""""
+from typing import Tuple, Callable
 
 
 def test(dataloader):
@@ -199,16 +198,11 @@ def test(dataloader):
     test_outputs = OrderedDict([('layer1', []), ('layer2', []), ('layer3', [])])
     # extract test set features
 
-    if config.speed_benchmark:
-        print('yo')
-        benchmark_step = 0
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-
     for batch in tqdm(dataloader, '| feature extraction | test | %s' % config.modality):
 
         input = batch[0]
         mask = batch[1]
+
         inputs.append(input)
         label = torch.where(mask.sum(dim=(1, 2, 3)) > 0, 1, 0)
         labels.append(label)
@@ -255,8 +249,8 @@ def test(dataloader):
 
         for i in range(H * W):
             mean = train_outputs[0][:, i]
-            # scipy.spatial.distance.mahalanobis takes in the inverse of the covariance matrix
             conv_inv = np.linalg.inv(train_outputs[1][:, :, i])
+            # scipy.spatial.distance.mahalanobis takes in the inverse of the covariance matrix
             dist = [mahalanobis(sample[:, i], mean, conv_inv) for sample in embedding_vectors]
             dist_list.append(dist)
 
@@ -277,19 +271,6 @@ def test(dataloader):
             anomaly_map = np.expand_dims(anomaly_map, 0)
 
         anomaly_maps.append(anomaly_map)
-
-        # Speed Benchmark
-        if config.speed_benchmark:
-            benchmark_step += 1
-            # ignore 3 warmup steps
-            if benchmark_step == 3:
-                start.record()
-
-            if benchmark_step == 13:
-                end.record()
-                torch.cuda.synchronize()
-                print(f'fps: {1000 * config.batch_size * 10 /start.elapsed_time(end)}')
-                exit(0)
 
     anomaly_maps = np.concatenate(anomaly_maps)
 
@@ -313,12 +294,6 @@ def test(dataloader):
     # apply brainmask for MRI
     if config.modality == 'MRI':
         masks = [inp > inp.min() for inp in inputs2]
-
-        if config.get_images:
-            anomaly_maps = [map * mask for map, mask in zip(anomaly_maps, masks)]
-            mins = [(map[map > map.min()]) for map in anomaly_maps]
-            mins = [map.min() for map in mins]
-            anomaly_maps = torch.cat([(map - min) for map, min in zip(anomaly_maps, mins)]).unsqueeze(1)
         anomaly_maps = [map * mask for map, mask in zip(anomaly_maps, masks)]
         anomaly_scores = [torch.Tensor([map[inp > inp.min()].max()
                                         for map, inp in zip(anomaly_maps, inputs2)])]
@@ -333,7 +308,8 @@ def test(dataloader):
 
 def evaluation(inputs, segmentations, labels, anomaly_maps, anomaly_scores):
 
-    metrics(config, anomaly_maps, segmentations, anomaly_scores, labels)
+    # calculate metrics like AP, AUROC, on pixel and/or image level
+    _ = metrics(config, anomaly_maps, segmentations, anomaly_scores, labels)
 
     # Log images to wandb
     config.num_images_log = config.num_images_log * 4
@@ -345,7 +321,120 @@ def evaluation(inputs, segmentations, labels, anomaly_maps, anomaly_scores):
          }, config)
 
 
+def test_inference_speed(inference_fn: Callable,
+                         img_size: Tuple[int, int, int] = [1, 128, 128],
+                         iterations: int = 100):
+    """Measure the inference speed of a model.
+
+    :param inference_fn: A function that takes a batch of images as input and returns the model output.
+    :param img_size: The size of the input images. (channels, height, width)
+    :param iterations: Number of iterations to run the inference function.
+    """
+    assert torch.cuda.is_available(), "Enable GPU as hardware accelerator"
+    device = "cuda"
+
+    # Dummy samples
+    x = torch.randn((1, *img_size), device=device)
+
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+    timings = torch.zeros((iterations, 1))
+    # load saved statistics
+    save_path = os.path.join(config.model_dir_path, 'saved_models')
+    with open(f'{save_path}/{config.modality}/{config.arch}_{config.name}.pkl', 'rb') as f:
+        train_outputs = pickle.load(f)
+    conv_inv = np.zeros((train_outputs[0].shape[0], train_outputs[0].shape[0], train_outputs[0].shape[1]))
+
+    for i in tqdm(range(train_outputs[0].shape[-1])):
+        # scipy.spatial.distance.mahalanobis takes in the inverse of the covariance matrix
+        conv_inv[:, :, i] = np.linalg.inv(train_outputs[1][:, :, i])
+    # GPU warm-up
+    for _ in tqdm(range(10)):
+        _ = inference_fn(x, train_outputs[0], conv_inv)
+
+    # Measure
+    with torch.no_grad():
+        for i in tqdm(range(iterations)):
+            start_event.record()
+            _ = inference_fn(x, train_outputs[0], conv_inv)
+            end_event.record()
+            # Wait for GPU sync
+            torch.cuda.synchronize()
+            curr_time = start_event.elapsed_time(end_event)
+            timings[i] = curr_time
+
+    # Report results
+    fps = (1 / timings.mean()) * 1000  # Timings are milliseconds per iteration
+    print(f"Measured model speed: {fps:.2f} FPS.")
+
+
+def inference_logic_for_benchmark(input, mean, conv_inv):
+    # forward hook first 3 layer final activations
+    outputs = []
+
+    def hook(module, input, output):
+        outputs.append(output)
+
+    a = model.layer1.register_forward_hook(hook)
+    b = model.layer2.register_forward_hook(hook)
+    c = model.layer3.register_forward_hook(hook)
+
+    test_outputs = OrderedDict([('layer1', []), ('layer2', []), ('layer3', [])])
+    # extract test set features
+    # model prediction
+    with torch.no_grad():
+        _ = model(input.to(config.device))
+
+    # get intermediate layer outputs
+    for k, v in zip(test_outputs.keys(), outputs):
+        test_outputs[k].append(v.detach())
+
+    # reset hook outputs
+    outputs = []
+
+    for k, v in test_outputs.items():
+        test_outputs[k] = torch.cat(v, 0)
+
+    # Embedding concat
+    embedding_vectors = test_outputs['layer1']
+    for layer_name in ['layer2', 'layer3']:
+        next_layer_upscaled = F.interpolate(test_outputs[layer_name],
+                                            size=embedding_vectors.size(-1),
+                                            mode='bilinear',
+                                            align_corners=False)
+
+        embedding_vectors = torch.cat([embedding_vectors, next_layer_upscaled], dim=1)
+
+    # reset test_outputs dict
+    test_outputs = OrderedDict([('layer1', []), ('layer2', []), ('layer3', [])])
+
+    # randomly select d dimensions of embedding vector
+    embedding_vectors = torch.index_select(embedding_vectors, 1, idx.to(config.device))
+
+    # calculate distance matrix
+    B, C, H, W = embedding_vectors.size()
+    embedding_vectors = embedding_vectors.view(B, C, H * W).cpu().numpy()
+    dist_list = []
+
+    for i in range(H * W):
+
+        dist = [mahalanobis(sample[:, i], mean[:, i], conv_inv[:, :, i]) for sample in embedding_vectors]
+        dist_list.append(dist)
+
+    dist_list = np.array(dist_list).transpose(1, 0).reshape(B, H, W)
+
+    # upsample anoamaly maps
+    dist_list = torch.tensor(dist_list)
+    anomaly_map = F.interpolate(dist_list.unsqueeze(1), size=input.size(2), mode='bilinear',
+                                align_corners=False).squeeze().numpy()
+
+    return anomaly_map
+
+
 if __name__ == '__main__':
+    if config.speed_benchmark:
+        test_inference_speed(inference_logic_for_benchmark)
+        exit(0)
 
     if not config.eval:
         train()

@@ -7,10 +7,11 @@ import torch.nn.functional as F
 import math
 import torchvision.models as models
 from UPD_study.models.VAE.VAEmodel import VAE
-from UPD_study.models.fanogan.GANmodel import Encoder
+from UPD_study.models.fAnoGAN.GANmodel import Encoder
 from UPD_study.models.DAE.unet import UNet
 from UPD_study.models.PII.PIImodel import WideResNetAE
 from UPD_study.models.AMCons.models import Encoder as amc_encoder
+from UPD_study.models.expVAE.expVAEmodel import ConvVAE
 
 
 def backbone_architecture(config):
@@ -76,6 +77,11 @@ def backbone_architecture(config):
         model.forward = model.forward_CCD
         backbone = model
         return {'backbone': backbone, 'dim': 1024}
+
+    elif 'expvae' == config.backbone_arch:
+        model = ConvVAE(32).to(config.device)
+        encoder = model.encoder
+        return {'backbone': encoder, 'dim': 1024}
 
 
 class NormalizedLinear(nn.Module):

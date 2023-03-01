@@ -8,12 +8,12 @@ python UPD_study/models/CFLOW-AD/CFtrainer.py -speed t
 python UPD_study/models/CFLOW-AD/CFtrainer.py -space t
 python UPD_study/models/DAE/DAEtrainer.py -speed t
 python UPD_study/models/DAE/DAEtrainer.py -space t
-# python UPD_study/models/DFR/DFRtrainer.py -speed t
-# python UPD_study/models/DFR/DFRtrainer.py -space t
+python UPD_study/models/DFR/DFRtrainer.py -speed t
+python UPD_study/models/DFR/DFRtrainer.py -space t
 python UPD_study/models/FAE/FAEtrainer.py -speed t
 python UPD_study/models/FAE/FAEtrainer.py -space t
-python UPD_study/models/f-AnoGAN/GANtrainer.py -speed t
-python UPD_study/models/f-AnoGAN/GANtrainer.py -space t
+python UPD_study/models/fAnoGAN/GANtrainer.py -speed t
+python UPD_study/models/fAnoGAN/GANtrainer.py -space t
 python UPD_study/models/PADIM/PADIMtrainer.py -speed t
 python UPD_study/models/PADIM/PADIMtrainer.py -space t
 python UPD_study/models/PII/PIItrainer.py -speed t
@@ -24,3 +24,13 @@ python UPD_study/models/VAE/VAEtrainer.py -speed t
 python UPD_study/models/VAE/VAEtrainer.py -space t
 python UPD_study/models/VAE/r-VAEtrainer.py -speed t
 python UPD_study/models/VAE/r-VAEtrainer.py -space t
+python UPD_study/models/VAE/r-VAEtrainer.py -speed t
+python UPD_study/models/VAE/r-VAEtrainer.py -space t
+python UPD_study/models/H-TAE-S/HTAEStrainer.py -speed t
+python UPD_study/models/H-TAE-S/HTAEStrainer.py -space t
+python UPD_study/models/expVAE/expVAEtrainer.py -speed t
+python UPD_study/models/expVAE/expVAEtrainer.py -space t
+python UPD_study/models/CutPaste/CPtrainer.py -speed t 
+python UPD_study/models/CutPaste/CPtrainer.py -space t 
+python UPD_study/models/CutPaste/CPtrainer.py -speed t -loc f
+python UPD_study/models/CutPaste/CPtrainer.py -space t -loc f

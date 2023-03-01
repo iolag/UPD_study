@@ -270,7 +270,11 @@ def train() -> None:
                 return
 
 
+from UPD_study.utilities.utils import test_inference_speed
 if __name__ == '__main__':
+    if config.speed_benchmark:
+        test_inference_speed(vae_val_step)
+        exit(0)
     if config.eval:
         print(f'Evaluating {config.name}...')
         evaluate(config, big_testloader, vae_val_step)

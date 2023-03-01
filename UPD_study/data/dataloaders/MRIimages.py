@@ -162,8 +162,8 @@ def get_dataloaders(config: Namespace,
 
         # split before concating the volumes to keep complete patient samples in each subset
         config.return_volumes = True
-        # select central slices
-        config.slice_range = (70, 86)
+        if config.get_images:
+            config.slice_range = (72, 77)
         if config.sequence == 't1':
             if config.brats_t1:
                 slices, segmentations = get_brats_slices(config)
@@ -171,23 +171,59 @@ def get_dataloaders(config: Namespace,
                 slices, segmentations = get_atlas_slices(config)
         elif config.sequence == 't2':
             slices, segmentations = get_brats_slices(config)
+        elif config.sequence == 't1+t2':
+            config.sequence = 't2'
+            slices_t2, segmentations_t2 = get_brats_slices(config)
+            config.sequence = 't1'
+            slices_t1, segmentations_t1 = get_brats_slices(config)
 
-        # pick slices 70, 75, 80, 85
-        mask = [False] * 16
-        for i in range(0, 20, 5):
-            mask[i] = True
-        slices = slices[:, mask]
-        segmentations = segmentations[:, mask]
+            third_empty_channel = np.zeros_like(slices_t1)
 
-        slices_big = np.concatenate(slices, axis=0)
+            slices = np.concatenate([slices_t1, slices_t2, third_empty_channel], axis=2)
+            segmentations = segmentations_t1
+            config.sequence = 't1+t2'
+        # if config.norm_vol:
+        #     slices = np.concatenate([(volume - np.mean(volume)) / np.std(volume) for volume in slices])
+        split_idx = int(len(slices) * config.anomal_split)
 
-        seg_big = np.concatenate(segmentations, axis=0)
+        # if small part of anomal set is needed for validation (config.anomal_split != 1.0)
+        if split_idx != len(slices):
 
-        big = AnomalDataset([slices_big, seg_big], config)
+            slices_big = np.concatenate(slices[:split_idx], axis=0)
+            slices_small = np.concatenate(slices[split_idx:], axis=0)
+            seg_big = np.concatenate(segmentations[:split_idx], axis=0)
+            seg_small = np.concatenate(segmentations[split_idx:], axis=0)
 
-        big_test_dl = GenericDataloader(big, config, shuffle=config.shuffle)
-        small_test_dl = big_test_dl
+            # keep slices with brain pixels in them
+            if config.sequence == 't1+t2':
+                non_zero_idx_s_t1 = np.sum(slices_small[:, 0], axis=(1, 2)) > 0
+                non_zero_idx_s_t2 = np.sum(slices_small[:, 1], axis=(1, 2)) > 0
+                slices_small = slices_small[non_zero_idx_s_t1 * non_zero_idx_s_t2]
+                seg_small = seg_small[non_zero_idx_s_t1 * non_zero_idx_s_t2]
 
-        del slices, segmentations
+                non_zero_idx_b_t1 = np.sum(slices_big[:, 0], axis=(1, 2)) > 0
+                non_zero_idx_b_t2 = np.sum(slices_big[:, 1], axis=(1, 2)) > 0
+                slices_big = slices_big[non_zero_idx_b_t1 * non_zero_idx_b_t2]
+                seg_big = seg_big[non_zero_idx_b_t1 * non_zero_idx_b_t2]
 
-        return big_test_dl, small_test_dl
+            else:
+                non_zero_idx_s = np.sum(slices_small, axis=(1, 2, 3)) > 0
+                slices_small = slices_small[non_zero_idx_s]
+                seg_small = seg_small[non_zero_idx_s]
+
+                non_zero_idx_b = np.sum(slices_big, axis=(1, 2, 3)) > 0
+                slices_big = slices_big[non_zero_idx_b]
+                seg_big = seg_big[non_zero_idx_b]
+
+            for i in slices_big:
+                if np.count_nonzero(i) < 5:
+                    print(np.count_nonzero(i))
+            big = AnomalDataset([slices_big, seg_big], config)
+            small = AnomalDataset([slices_small, seg_small], config)
+
+            big_test_dl = GenericDataloader(big, config, shuffle=config.shuffle)
+            small_test_dl = GenericDataloader(small, config, shuffle=config.shuffle)
+
+            del slices, segmentations, slices_small, seg_small
+
+            return big_test_dl, small_test_dl

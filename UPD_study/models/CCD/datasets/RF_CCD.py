@@ -35,15 +35,6 @@ class CCD_Dataset(Dataset):
             T.ToTensor(),
         ])
 
-        if config.dataset in ['KAGGLE', 'IDRID']:
-            mean = np.array([0.4662, 0.3328, 0.2552])
-            std = np.array([0.2841, 0.2092, 0.1733])
-        else:
-            mean = np.array([0.5013, 0.3156, 0.2091])
-            std = np.array([0.2052, 0.1535, 0.1185])
-
-        self.norm = T.Normalize(mean, std)
-
         self.data = []
 
         for index in range(len(self.imgs)):

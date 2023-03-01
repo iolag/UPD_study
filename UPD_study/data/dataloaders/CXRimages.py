@@ -7,7 +7,7 @@ from torchvision import transforms as T
 import numpy as np
 from torch import Tensor
 from argparse import Namespace
-from Utilities.utils import GenericDataloader
+from UPD_study.utilities.utils import GenericDataloader
 from glob import glob
 import torch
 from pycocotools import mask

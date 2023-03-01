@@ -2,7 +2,6 @@ from UPD_study.utilities.utils import str_to_bool
 
 
 def common_config(parser):
-
     parser.add_argument('--percentage', '-pc', type=int, default=100,
                         help='% of samples to use for % experiment, defaults to 100 for no experiment')
     parser.add_argument('--shuffle', '-sh', type=str_to_bool, default=True,
@@ -36,7 +35,7 @@ def common_config(parser):
     parser.add_argument('--modality', '-mod', type=str, default='MRI', help='MRI sequence')
     parser.add_argument('--normal_split', '-ns', type=float, default=0.95, help='normal set split')
     parser.add_argument('--anomal_split', '-as', type=float, default=0.90, help='anomaly set split')
-    parser.add_argument('--num_workers', type=int, default=30, help='Number of workers')
+    parser.add_argument('--num_workers', type=int, default=4, help='Number of workers')
 
     # MRI specific settings
     parser.add_argument('--sequence', '-seq', type=str, default='t2',
@@ -44,7 +43,7 @@ def common_config(parser):
     parser.add_argument('--brats_t1', type=str_to_bool, default=True,
                         help='True for BraTS T1, false for ATLAS')
     parser.add_argument('--slice_range', type=int, nargs='+',
-                        default=(15, 135), help='Lower and Upper slice index')
+                        default=(0, 155), help='Lower and Upper slice index')
     parser.add_argument('--normalize', type=str_to_bool, default=False,
                         help='Normalize images to 98th percentile and scale to [0,1]')
     parser.add_argument('--equalize_histogram', type=str_to_bool,
@@ -65,7 +64,7 @@ def common_config(parser):
     parser.add_argument('--val_frequency', '-vf', type=int, default=1000, help='validation frequency')
     parser.add_argument('--anom_val_frequency', '-avf', type=int, default=1000,
                         help='Validation frequency on anomalous samples')
-    parser.add_argument('--val_steps', type=int, default=50, help='validation steps')
+    parser.add_argument('--val_steps', type=int, default=100, help='validation steps')
     parser.add_argument('--num_images_log', '-nil', type=int, default=16,
                         help='Number of images to log on wandb')
 

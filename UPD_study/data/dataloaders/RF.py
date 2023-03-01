@@ -74,6 +74,7 @@ class NormalDataset(Dataset):
         if self.center:
             # Center input
             image = (image - 0.5) * 2
+
         return image
 
     def __len__(self):
@@ -117,15 +118,17 @@ class AnomalDataset(Dataset):
         self.segmentations = segmentations
         self.images = anomal_paths + normal_paths
         self.labels = labels_anomal + labels_normal
+        self.image_size = config.image_size
+
         self.image_transforms = T.Compose([
-            T.Resize((config.image_size), T.InterpolationMode.LANCZOS),
-            T.CenterCrop((config.image_size)),
+            T.Resize((self.image_size), T.InterpolationMode.LANCZOS),
+            T.CenterCrop((self.image_size)),
             T.ToTensor()
         ])
 
         self.mask_transforms = T.Compose([
-            T.Resize((config.image_size), T.InterpolationMode.NEAREST),
-            T.CenterCrop((config.image_size)),
+            T.Resize((self.image_size), T.InterpolationMode.NEAREST),
+            T.CenterCrop((self.image_size)),
             T.ToTensor()
         ])
 
@@ -139,6 +142,7 @@ class AnomalDataset(Dataset):
         """
 
         image = Image.open(self.images[idx])
+
         image = self.image_transforms(image)
         # Center input
         if self.center:

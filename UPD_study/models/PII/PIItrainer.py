@@ -7,7 +7,7 @@ from time import time
 import pathlib
 from UPD_study.utilities.evaluate import evaluate
 from UPD_study.utilities.common_config import common_config
-from UPD_study.utilities.utils import (save_model, seed_everything,
+from UPD_study.utilities.utils import (save_model, test_inference_speed, seed_everything,
                                        load_data, load_pretrained,
                                        misc_settings,
                                        load_model, log)
@@ -223,6 +223,10 @@ def train():
 
 
 if __name__ == '__main__':
+    if config.speed_benchmark:
+        test_inference_speed(anom_val_step)
+        exit(0)
+
     if config.eval:
         print('Evaluating model...')
         evaluate(config, big_testloader, anom_val_step)
