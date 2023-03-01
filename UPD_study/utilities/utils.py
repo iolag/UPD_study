@@ -20,11 +20,13 @@ from UPD_study.utilities.metrics import (
     compute_auroc,
     compute_best_dice
 )
+from tqdm import tqdm
 
 
 def test_inference_speed(inference_fn: Callable,
                          img_size: Tuple[int, int, int] = [1, 128, 128],
-                         iterations: int = 1000):
+                         iterations: int = 1000,
+                         restoration: bool = False):
     """Measure the inference speed of a model.
 
     :param inference_fn: A function that takes a batch of images as input and returns the model output.
@@ -42,19 +44,23 @@ def test_inference_speed(inference_fn: Callable,
     timings = torch.zeros((iterations, 1))
 
     # GPU warm-up
-    for _ in range(100):
+    for _ in range(10):
         _ = inference_fn(x)
 
     # Measure
-    with torch.no_grad():
-        for i in range(iterations):
-            start_event.record()
+    for i in tqdm(range(iterations)):
+        start_event.record()
+        if restoration:
+            # r-vae requires gradient calculation during inference
             _ = inference_fn(x)
-            end_event.record()
-            # Wait for GPU sync
-            torch.cuda.synchronize()
-            curr_time = start_event.elapsed_time(end_event)
-            timings[i] = curr_time
+        else:
+            with torch.no_grad():
+                _ = inference_fn(x)
+        end_event.record()
+        # Wait for GPU sync
+        torch.cuda.synchronize()
+        curr_time = start_event.elapsed_time(end_event)
+        timings[i] = curr_time
 
     # Report results
     fps = (1 / timings.mean()) * 1000  # Timings are milliseconds per iteration

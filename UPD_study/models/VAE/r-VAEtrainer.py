@@ -224,7 +224,7 @@ def restoration_step(input, test_samples: bool = False) -> Tuple[dict, Tensor]:
 
 if __name__ == '__main__':
     if config.speed_benchmark:
-        test_inference_speed(restoration_step)
+        test_inference_speed(restoration_step, iterations=100, restoration=True)
         exit(0)
 
     print('Evaluating model...')
