@@ -6,7 +6,6 @@ Abstract: Deep unsupervised approaches are gathering increased attention for app
 
 If you find our work useful for your research, please consider citing:
 
-#
 # Usage
 
 Download this repository by running
