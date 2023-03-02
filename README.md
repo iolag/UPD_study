@@ -10,13 +10,14 @@ Deep unsupervised approaches are gathering increased attention for applications 
 If you find our work useful for your research, please consider citing:
 ```
 @misc{UPD_study,
-  doi = {10.48550/ARXIV.2303.00609},
+  doi = {10.48550/ARXIV.2303.00609}, 
   url = {https://arxiv.org/abs/2303.00609},
-  author = {Lagogiannis, Ioannis and Meissen, Felix and Kaissis, Georgios and Rueckert, Daniel},
+  author = {Lagogiannis, Ioannis and Meissen, Felix and Kaissis, Georgios and Rueckert, Daniel}
   title = {Unsupervised Pathology Detection: A Deep Dive Into the State of the Art},
   publisher = {arXiv},
   year = {2023}
 }
+
 ```
 
 # Usage
