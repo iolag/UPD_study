@@ -17,7 +17,6 @@ If you find our work useful for your research, please consider citing:
   publisher = {arXiv},
   year = {2023}
 }
-
 ```
 
 # Usage
