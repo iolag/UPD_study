@@ -1,23 +1,10 @@
 # Official Repository of: "Unsupervised Pathology Detection: A Deep Dive Into the State of the Art"
-arXiv preprint: [https://arxiv.org/abs/2303.00609](https://arxiv.org/abs/2303.00609)
+This repository contains the code to reproduce all experiments from the paper.
 
-This repository contains code to reproduce experiments from the paper.
+Abstract: Deep unsupervised approaches are gathering increased attention for applications such as pathology detection and segmentation in medical images since they promise to alleviate the need for large labeled datasets and are more generalizable than their supervised counterparts in detecting any kind of rare pathology. As the Unsupervised Anomaly Detection (UAD) literature continuously grows and new paradigms emerge, it is vital to continuously evaluate and benchmark new methods in a common framework, in order to reassess the state-of-the-art (SOTA) and identify promising research directions. To this end, we evaluate a diverse selection of cutting-edge UAD methods on multiple medical datasets, comparing them against the established SOTA in UAD for brain MRI. Our experiments demonstrate that newly developed feature-modeling methods from the industrial and medical literature achieve increased performance compared to previous work and set the new SOTA in a variety of modalities and datasets. Additionally, we show that such methods are capable of benefiting from recently developed self-supervised pre-training algorithms, further increasing their performance. Finally, we perform a series of experiments in order to gain further insights into some unique characteristics of selected models and datasets.
 
-## Abstract
-Deep unsupervised approaches are gathering increased attention for applications such as pathology detection and segmentation in medical images since they promise to alleviate the need for large labeled datasets and are more generalizable than their supervised counterparts in detecting any kind of rare pathology. As the Unsupervised Anomaly Detection (UAD) literature continuously grows and new paradigms emerge, it is vital to continuously evaluate and benchmark new methods in a common framework, in order to reassess the state-of-the-art (SOTA) and identify promising research directions. To this end, we evaluate a diverse selection of cutting-edge UAD methods on multiple medical datasets, comparing them against the established SOTA in UAD for brain MRI. Our experiments demonstrate that newly developed feature-modeling methods from the industrial and medical literature achieve increased performance compared to previous work and set the new SOTA in a variety of modalities and datasets. Additionally, we show that such methods are capable of benefiting from recently developed self-supervised pre-training algorithms, further increasing their performance. Finally, we perform a series of experiments in order to gain further insights into some unique characteristics of selected models and datasets.
 
-## Citation
 If you find our work useful for your research, please consider citing:
-```
-@misc{UPD_study,
-  doi = {10.48550/ARXIV.2303.00609}, 
-  url = {https://arxiv.org/abs/2303.00609},
-  author = {Lagogiannis, Ioannis and Meissen, Felix and Kaissis, Georgios and Rueckert, Daniel}
-  title = {Unsupervised Pathology Detection: A Deep Dive Into the State of the Art},
-  publisher = {arXiv},
-  year = {2023}
-}
-```
 
 # Usage
 
@@ -115,3 +102,5 @@ bash UPD_study/experiments/percentage.sh
 
 
 ![A )](figures/repo_samples.png)
+
+This repository is a work in progress and in need of more cleanup and documentation. If you face any issues or have any suggestions do not hesitate to contact me or open an issue.
