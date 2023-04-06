@@ -1,8 +1,13 @@
-
 """
 adapted for PyTorch from:
 https://github.com/yousuhang/Unsupervised-Lesion-Detection-via-Image-Restoration-with-a-Normative-Prior
 """
+"""
+Note that this file includes only the evaluation logic for r-Vae. 
+For it to work, a VAE should have been trained first, with the same modality, model hyperparameters and seed. 
+Then the appropriate model will then be loaded automatically when you run this script. 
+"""
+
 from argparse import ArgumentParser
 import numpy as np
 import torch

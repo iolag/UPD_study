@@ -64,7 +64,7 @@ def get_config():
                         help='number of layers used in NF model (default: 8)')
 
     # Training Hyperparameters
-    parser.add_argument('--max-steps', '-ms', type=int, default=3000, help='Number of training steps')
+    parser.add_argument('--max_steps', '-ms', type=int, default=3000, help='Number of training steps')
     parser.add_argument('-bs', '--batch-size', default=32, type=int, metavar='B',
                         help='train batch size (default: 32)')
     parser.add_argument('--lr', type=float, default=2e-4, metavar='LR',

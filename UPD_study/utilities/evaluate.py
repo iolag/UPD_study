@@ -25,10 +25,6 @@ def evaluate(config: Namespace, test_loader: DataLoader, val_step: Callable) -> 
 
     # forward pass the testloader to extract anomaly maps, scores, masks, labels
     for input, mask in tqdm(test_loader, desc="Test set", disable=config.speed_benchmark):
-        if config.patches:
-            input = input.squeeze(0)
-            mask = mask.squeeze(0)
-        # forward pass, output = [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
         input = input.to(config.device)
         output = val_step(input, test_samples=True)
 
@@ -59,10 +55,6 @@ def evaluate(config: Namespace, test_loader: DataLoader, val_step: Callable) -> 
     # do a single forward pass to extract images to log
     # the batch size is num_images_log for test_loaders, so only a single forward pass necessary
     input, mask = next(iter(test_loader))
-    if config.patches:
-        input = input.squeeze(0)
-        mask = mask.squeeze(0)
-    # forward pass, output = [anomaly_map, anomaly_score] or [anomaly_map, anomaly_score, recon]
     output = val_step(input.to(config.device), test_samples=True)
 
     anomaly_maps = output[0]

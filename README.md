@@ -102,3 +102,5 @@ bash UPD_study/experiments/percentage.sh
 
 
 ![A )](figures/repo_samples.png)
+
+This repo is a work in progress and in need of more cleanup and doucmentation. If you face any issues or have any suggestions do not hesitate to contact me or open an issue.
