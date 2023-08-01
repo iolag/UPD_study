@@ -1,13 +1,23 @@
 # Official Repository of: "Unsupervised Pathology Detection: A Deep Dive Into the State of the Art"
-arXiv preprint: [https://arxiv.org/abs/2303.00609](https://arxiv.org/abs/2303.00609)
 
-This repository contains code to reproduce experiments from the paper. 
+This repository contains code to reproduce experiments from the paper ["Unsupervised Pathology Detection: A Deep Dive Into the State of the Art"](https://ieeexplore.ieee.org/document/10197302) ([arXiv preprint](https://arxiv.org/abs/2303.00609)). 
 
-## Abstract
-Deep unsupervised approaches are gathering increased attention for applications such as pathology detection and segmentation in medical images since they promise to alleviate the need for large labeled datasets and are more generalizable than their supervised counterparts in detecting any kind of rare pathology. As the Unsupervised Anomaly Detection (UAD) literature continuously grows and new paradigms emerge, it is vital to continuously evaluate and benchmark new methods in a common framework, in order to reassess the state-of-the-art (SOTA) and identify promising research directions. To this end, we evaluate a diverse selection of cutting-edge UAD methods on multiple medical datasets, comparing them against the established SOTA in UAD for brain MRI. Our experiments demonstrate that newly developed feature-modeling methods from the industrial and medical literature achieve increased performance compared to previous work and set the new SOTA in a variety of modalities and datasets. Additionally, we show that such methods are capable of benefiting from recently developed self-supervised pre-training algorithms, further increasing their performance. Finally, we perform a series of experiments in order to gain further insights into some unique characteristics of selected models and datasets.
+In this work, we perform a comprehensive evaluation of the state of the art in unsupervised pathology detection. We find that recent feature-modeling methods achieve increased performance compared to previous work and are capable of benefiting from recently developed self-supervised pre-training algorithms, further increasing their performance.
 
-## Citation
+
+### Citation
 If you find our work useful for your research, please consider citing:
+```
+@ARTICLE{10197302,
+  author={Lagogiannis, Ioannis and Meissen, Felix and Kaissis, Georgios and Rueckert, Daniel},
+  journal={IEEE Transactions on Medical Imaging}, 
+  title={Unsupervised Pathology Detection: A Deep Dive Into the State of the Art}, 
+  year={2023},
+  volume={},
+  number={},
+  pages={1-1},
+  doi={10.1109/TMI.2023.3298093}}
+```
 ```
 @misc{UPD_study,
   doi = {10.48550/ARXIV.2303.00609}, 
