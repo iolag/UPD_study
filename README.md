@@ -80,7 +80,7 @@ To download and preprocess ATLAS and BraTS, first download ROBEX from https://ww
 bash UPD_study/data/data_preprocessing/prepare_ATLAS.sh
 bash UPD_study/data/data_preprocessing/prepare_BraTS.sh
 ```
-For ATLAS you need to apply for the data at https://fcon_1000.projects.nitrc.org/indi/retro/atlas.htm and receive the encryption password. During the run of prepare_ATLAS.sh you will be prompted to input the password.
+For ATLAS you need to apply for the data at https://fcon_1000.projects.nitrc.org/indi/retro/atlas.html and receive the encryption password. During the run of prepare_ATLAS.sh you will be prompted to input the password.
 
 For BraTS, Kaggle's API will be used to download the data. To be able to interact with the API, follow the instructions at https://www.kaggle.com/docs/api.
 
