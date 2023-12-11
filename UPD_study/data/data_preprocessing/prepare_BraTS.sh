@@ -10,7 +10,7 @@ rm -r UPD_study/data/datasets/MRI/BraTS2020_ValidationData
 mv UPD_study/data/datasets/MRI/BraTS2020_TrainingData/* UPD_study/data/datasets/MRI/BraTS
 rm -r UPD_study/data/datasets/MRI/BraTS2020_TrainingData
 # fix a mistake in the naming
-mv UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData/BraTS20_Training_355/W39_1998.09.19_Segm.nii UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData/BraTS20_Training_355/W39_1998.09.19_Segm.nii UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData/BraTS20_Training_355/W39_1998.09.19_Segm.nii UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData/BraTS20_Training_355/BraTS20_Training_355_seg.nii 
+mv UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData/BraTS20_Training_355/W39_1998.09.19_Segm.nii UPD_study/data/datasets/MRI/BraTS/MICCAI_BraTS2020_TrainingData/BraTS20_Training_355/BraTS20_Training_355_seg.nii 
 
 # Register and skullstrip
 python UPD_study/data/data_preprocessing/prepare_data.py --dataset BraTS
