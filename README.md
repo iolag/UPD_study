@@ -62,7 +62,12 @@ A quick guide on the folder and code structure can be found [here](structure.md)
 
 ### CheXpert 
 
-To download CheXpert you must first register at https://stanfordmlgroup.github.io/competitions/chexpert/. After you receive the subscription confirmation e-mail, download the downsampled version (~11G) and extract the CheXpert-v1.0-small folder in data/datasets/CXR. No other steps are required and all splits are provided.
+~To download CheXpert you must first register at https://stanfordmlgroup.github.io/competitions/chexpert/. After you receive the subscription confirmation e-mail, download the downsampled version (11G) and extract the CheXpert-v1.0-small folder in data/datasets/CXR. No other steps are required and all splits are provided.~
+
+#### Update 12/12/23
+
+It seems that the small version of the dataset isn't available from the official source anymore. You can find it in [Kaggle](https://www.kaggle.com/datasets/ssttff/chexpertv10small).
+
 
 ### DDR 
 
