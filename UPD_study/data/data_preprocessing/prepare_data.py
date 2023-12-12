@@ -51,7 +51,6 @@ class BraTSHandler():
         files = sorted(glob(
             f"{args.dataset_path}/MICCAI_BraTS2020_TrainingData/*/*_t1.nii"))
         print(f"Found {len(files)} files.")
-        files = files[354:]
         if len(files) == 0:
             raise RuntimeError("0 files to be registered")
 
