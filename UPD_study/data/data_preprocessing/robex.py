@@ -34,11 +34,18 @@ def strip_skull_ROBEX(paths, out_dir: Optional[str] = None,
     batches = [list(p) for p in np.array_split(paths, num_processes) if len(p) > 0]
     print(f"Skull stripping is using {len(batches)} cpu cores")
 
+    processes = []
     # Start multiprocessing
     for i, batch in enumerate(batches):
         p = multiprocessing.Process(
             target=_strip_skull_ROBEX, args=(batch, i, out_dir,))
         p.start()
+        processes.append(p)
+
+    # Wait for all processes to finish
+    print("Waiting for ROBEX to finish")
+    for p in processes:
+        p.join()
 
 
 def _strip_skull_ROBEX(paths: List[str], i_process: int,
