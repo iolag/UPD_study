@@ -109,8 +109,8 @@ class CamCANHandler():
         print("Preparing CamCAN directory")
         self.prepare_CamCAN(args)
         print(f"Skull stripping for CamCAN {args.weighting} scans")
-        # self.skull_strip_CamCAN(args)
-        # self.register_CamCAN(args)
+        self.skull_strip_CamCAN(args)
+        self.register_CamCAN(args)
 
     @staticmethod
     def prepare_CamCAN(args):
