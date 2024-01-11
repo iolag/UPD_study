@@ -229,8 +229,8 @@ class ATLASHandler():
                                f' from https://fcon_1000.projects.nitrc.org/indi/retro/atlas_download.html'
                                f' and extract to {args.dataset_path}')
         self.rename_lesions(args)
-        self.registerATLAS(args)
         self.skull_strip_ATLAS(args)
+        self.registerATLAS(args)
 
     @staticmethod
     def rename_lesions(args):
