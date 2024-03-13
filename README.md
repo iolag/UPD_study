@@ -134,4 +134,4 @@ The repository contains PyTorch implementations for [VAE](https://arxiv.org/abs/
 ##
 ![A )](figures/repo_samples.png)
 
-This repository is a work in progress and in need of more cleanup and documentation. If you face any issues or have any suggestions do not hesitate to contact me or open an issue.
+If you face any issues or have any suggestions do not hesitate to contact me or open an issue.
