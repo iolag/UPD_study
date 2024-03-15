@@ -65,7 +65,7 @@ class GradCAM(PropBase):
         return grads / l2_norm.item()
 
     def compute_gradient_weights(self):
-        self.grads = self.normalize(self.grads.squeeze())
+        self.grads = self.normalize(self.grads)
         self.map_size = self.grads.size()[2:]
         self.weights = nn.AvgPool2d(self.map_size)(self.grads)
 
