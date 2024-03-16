@@ -12,21 +12,11 @@ If you find our work useful for your research, please consider citing:
   author={Lagogiannis, Ioannis and Meissen, Felix and Kaissis, Georgios and Rueckert, Daniel},
   journal={IEEE Transactions on Medical Imaging}, 
   title={Unsupervised Pathology Detection: A Deep Dive Into the State of the Art}, 
-  year={2023},
-  volume={},
-  number={},
-  pages={1-1},
+  year={2024},
+  volume={43},
+  number={1},
+  pages={241-252},
   doi={10.1109/TMI.2023.3298093}}
-```
-```
-@misc{UPD_study,
-  doi = {10.48550/ARXIV.2303.00609}, 
-  url = {https://arxiv.org/abs/2303.00609},
-  author = {Lagogiannis, Ioannis and Meissen, Felix and Kaissis, Georgios and Rueckert, Daniel}
-  title = {Unsupervised Pathology Detection: A Deep Dive Into the State of the Art},
-  publisher = {arXiv},
-  year = {2023}
-}
 ```
 
 # Usage
